@@ -1,0 +1,38 @@
+# Core ML/AI libraries
+torch>=2.0.0
+transformers>=4.30.0
+accelerate>=0.20.0
+peft>=0.4.0
+bitsandbytes>=0.39.0
+huggingface-hub>=0.16.0
+
+# LoRA Fine-Tuning Dependencies
+datasets>=2.14.0
+pandas>=1.5.0
+numpy>=1.24.0
+
+# CLI and UI
+click>=8.0.0
+rich>=13.0.0
+colorama>=0.4.6
+
+# API clients
+openai>=1.0.0
+requests>=2.28.0
+
+# Configuration and utilities
+pyyaml>=6.0
+tqdm>=4.64.0
+python-dotenv>=1.0.0
+pathlib2>=2.3.7
+
+# Additional training utilities
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# RAG (Retrieval-Augmented Generation) dependencies
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+beautifulsoup4>=4.12.0
+lxml>=4.9.0

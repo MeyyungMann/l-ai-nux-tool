@@ -1,0 +1,133 @@
+# Environment variables
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Model cache and data
+model_cache/
+model_cache;C/
+docker_model_cache/
+docker_model_cache;C/
+*.pkl
+*.pth
+*.bin
+*.safetensors
+
+# Test outputs
+test_results*.json
+validation_results.json
+comprehensive_test_results.json
+lora_integration_test_results.json
+
+# Training outputs
+lora_outputs/
+*.log
+training_data/cache/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Project-specific cache directories
+doc_cache/
+rag_cache/
+quantized_model_cache/
+test_env/
+
+# Test files created during development
+test*.md
+testmey.md
+testtest.md
+
+# Docker volumes and data
+docker_data/
+docker_volumes/
+
+# HuggingFace cache (if not already covered)
+.cache/
+huggingface/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Pytest cache
+.pytest_cache/
+
+# MyPy cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# RAG and documentation cache
+*.jsonl
+*.faiss
+
+# Large model files (additional patterns)
+*.ckpt
+*.pt
+*.h5
+*.hdf5
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# OS-specific files (additional)
+.DS_Store?
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db:encryptable
+
