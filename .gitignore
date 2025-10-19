@@ -119,6 +119,19 @@ dmypy.json
 *.h5
 *.hdf5
 
+# Ollama models and large files (prevent 100MB+ files)
+ollama_models/
+*.blob
+sha256-*
+
+# Additional large file patterns to prevent GitHub 100MB limit issues
+**/blobs/*
+**/manifests/*
+models/
+*.model
+*.gguf
+*.ggml
+
 # Backup files
 *.bak
 *.backup
