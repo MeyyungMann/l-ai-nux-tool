@@ -35,7 +35,7 @@ class Config:
     def _create_default_config(self) -> Dict[str, Any]:
         """Create default configuration."""
         default_config = {
-            'mode': 'offline',  # Default mode: 'offline' or 'online'
+            'mode': 'online',  # Default mode: 'offline' or 'online'
             'model': {
                 'base_model': 'mistralai/Mixtral-8x7B-Instruct-v0.1',
                 'lora_model': 'lai-nux-tool/lora-command-generator',
@@ -62,6 +62,11 @@ class Config:
                 'show_confidence': True,
                 'auto_execute': False
             },
+        'ollama': {
+            'base_url': 'http://host.docker.internal:11434',
+            'model': 'gpt-oss:20b',
+            'timeout': 120
+        },
             'auto_save_quantized': True  # Auto-save quantized cache after first run
         }
         
@@ -126,5 +131,10 @@ class Config:
     def ui_config(self) -> Dict[str, Any]:
         """Get UI configuration."""
         return self.get('ui', {})
+    
+    @property
+    def ollama_config(self) -> Dict[str, Any]:
+        """Get Ollama configuration."""
+        return self.get('ollama', {})
 
 

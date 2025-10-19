@@ -12,8 +12,13 @@ class WindowsCompatibility:
     
     def __init__(self):
         self.system = platform.system()
+        self.is_docker = self._check_docker()
         self.wsl_available = self._check_wsl()
         self.powershell_available = self._check_powershell()
+    
+    def _check_docker(self) -> bool:
+        """Check if running inside Docker container."""
+        return os.path.exists('/.dockerenv')
     
     def _check_wsl(self) -> bool:
         """Check if WSL is available."""
@@ -77,6 +82,11 @@ class WindowsCompatibility:
     
     def execute_command(self, command: str) -> tuple[str, str, int]:
         """Execute command with Windows compatibility."""
+        # If running in Docker, execute commands directly in Linux environment
+        if self.is_docker:
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            return result.stdout, result.stderr, result.returncode
+        
         if self.system != "Windows":
             # Use standard subprocess for Unix systems
             result = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -109,6 +119,7 @@ class WindowsCompatibility:
         """Get system information for compatibility."""
         return {
             'system': self.system,
+            'is_docker': self.is_docker,
             'wsl_available': self.wsl_available,
             'powershell_available': self.powershell_available,
             'python_version': platform.python_version(),

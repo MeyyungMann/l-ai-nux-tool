@@ -175,8 +175,11 @@ class RAGEngine:
     
     def get_context_for_query(self, query: str, top_k: int = 3) -> str:
         """Get formatted context for a query to augment generation with caching."""
+        # Improve query processing for better context matching
+        processed_query = self._improve_query_for_context(query)
+        
         # Create cache key from normalized query
-        cache_key = self._normalize_query(query.lower()) + f"_k{top_k}"
+        cache_key = self._normalize_query(processed_query.lower()) + f"_k{top_k}"
         
         # Check cache first
         if cache_key in self.query_cache:
@@ -184,7 +187,7 @@ class RAGEngine:
             return self.query_cache[cache_key]
         
         # Try partial matching for similar queries
-        normalized_query = self._normalize_query(query.lower())
+        normalized_query = self._normalize_query(processed_query.lower())
         for existing_key in self.query_cache.keys():
             if existing_key.endswith(f"_k{top_k}") and existing_key.startswith(normalized_query[:10]):
                 logger.debug(f"🎯 Query cache PARTIAL HIT for: {query}")
@@ -192,8 +195,8 @@ class RAGEngine:
         
         logger.debug(f"🔍 Query cache MISS for: {query}")
         
-        # Retrieve documents
-        relevant_docs = self.retrieve_relevant_docs(query, top_k)
+        # Retrieve documents with improved query
+        relevant_docs = self.retrieve_relevant_docs(processed_query, top_k)
         
         if not relevant_docs:
             return ""
@@ -221,6 +224,42 @@ class RAGEngine:
         self._save_query_cache()
         
         return context
+    
+    def _improve_query_for_context(self, query: str) -> str:
+        """Improve query for better context matching."""
+        # Fix common typos and improve query specificity
+        improvements = {
+            'diplicate': 'duplicate',
+            'duplicate files by name': 'duplicate-detection filename',
+            'duplicate files by content': 'duplicate-detection content',
+            'duplicate filenames': 'duplicate-detection filename',
+            'duplicate file names': 'duplicate-detection filename',
+            'files with same name': 'duplicate-detection filename',
+            'same filename': 'duplicate-detection filename',
+            'list files with date': 'list files with timestamps',
+            'files today': 'files created today',
+            'files yesterday': 'files created yesterday',
+            'large files': 'find large files',
+            'empty files': 'find empty files',
+            'permissions': 'file permissions',
+            'ownership': 'file ownership',
+        }
+        
+        improved_query = query.lower()
+        for original, improved in improvements.items():
+            if original in improved_query:
+                improved_query = improved_query.replace(original, improved)
+                break
+        
+        # Add specific context hints for better matching
+        if 'duplicate' in improved_query and ('name' in improved_query or 'filename' in improved_query):
+            improved_query += ' duplicate-detection filename find basename printf'
+        elif 'duplicate' in improved_query and 'content' in improved_query:
+            improved_query += ' duplicate-detection content md5sum sha256sum'
+        elif 'find' in improved_query and 'files' in improved_query:
+            improved_query += ' file search'
+        
+        return improved_query
 
     def store_context_for_query(self, query: str, context: str, top_k: int = 3) -> None:
         """Store a provided context string into the query cache for this query.

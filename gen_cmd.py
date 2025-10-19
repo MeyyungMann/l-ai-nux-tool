@@ -34,32 +34,61 @@ from src.windows_compatibility import WindowsCompatibility
 from src.shift_tab import ShiftTabCompletion
 from src.enhanced_safety import EnhancedSafetySystem
 
-# Global flag for graceful shutdown
+# Global flag for graceful shutdown - ensure it's always initialized
+import sys
 shutdown_requested = False
+
+# Ensure the variable is always available in globals
+if 'shutdown_requested' not in globals():
+    shutdown_requested = False
+
+def get_shutdown_requested():
+    """Safely get the shutdown_requested flag."""
+    global shutdown_requested
+    if 'shutdown_requested' not in globals():
+        shutdown_requested = False
+    return shutdown_requested
+
+def set_shutdown_requested(value: bool):
+    """Safely set the shutdown_requested flag."""
+    global shutdown_requested
+    shutdown_requested = value
 
 def signal_handler(signum, frame):
     """Handle Ctrl+C gracefully."""
-    global shutdown_requested
-    shutdown_requested = True
-    print("\n🛑 Shutdown requested. Press Ctrl+C again to force exit.")
-    print("💡 You can continue with the next command or type 'exit' to quit.")
+    try:
+        current_state = get_shutdown_requested()
+        
+        if current_state:
+            # Second Ctrl+C - force exit
+            print("\n🛑 Force exit requested. Goodbye!")
+            exit(0)
+        else:
+            # First Ctrl+C - graceful shutdown
+            set_shutdown_requested(True)
+            print("\n🛑 Shutdown requested. Press Ctrl+C again to force exit.")
+            print("💡 You can continue with the next command or type 'exit' to quit.")
+    except Exception as e:
+        print(f"\n🛑 Error in signal handler: {e}")
+        print("🛑 Force exit requested. Goodbye!")
+        exit(0)
 
 def setup_signal_handlers():
     """Setup signal handlers for graceful shutdown."""
+    # Ensure the global variable is initialized
+    set_shutdown_requested(False)
     signal.signal(signal.SIGINT, signal_handler)
     if hasattr(signal, 'SIGTERM'):
         signal.signal(signal.SIGTERM, signal_handler)
 
 console = Console()
 
-def determine_mode(mode, offline, online, config):
+def determine_mode(mode, online, config):
     """Determine the mode based on arguments and configuration."""
     
     # Priority: explicit mode > flags > config > default
     if mode:
         return mode
-    elif offline:
-        return 'offline'
     elif online:
         return 'online'
     else:
@@ -68,7 +97,7 @@ def determine_mode(mode, offline, online, config):
         if api_key:
             return 'online'
         else:
-            return 'offline'
+            return 'online'
 
 def show_mode_selection_menu():
     """Show mode selection menu."""
@@ -163,26 +192,25 @@ def show_mode_help():
 
 @click.command()
 @click.argument('description', required=False)
-@click.option('--mode', type=click.Choice(['online', 'offline', 'rag', 'online-rag', 'compare']), help='Choose mode: online, offline, rag, online-rag, or compare')
-@click.option('--offline', is_flag=True, help='Use offline mode with local model (deprecated, use --mode offline)')
+@click.option('--mode', type=click.Choice(['online', 'online-rag', 'compare', 'ollama', 'ollama-rag']), help='Choose mode: online, online-rag, compare, ollama, or ollama-rag')
 @click.option('--online', is_flag=True, help='Use online mode with API (deprecated, use --mode online)')
 @click.option('--api-key', help='API key for online mode')
 @click.option('--base-url', default='https://api.openai.com/v1', help='Base URL for API')
 @click.option('--interactive', '-i', is_flag=True, help='Interactive mode')
 @click.option('--show-rag-impact', is_flag=True, help='Show side-by-side comparison of with/without RAG')
-def gen_cmd(description, mode, offline, online, api_key, base_url, interactive, show_rag_impact):
+def gen_cmd(description, mode, online, api_key, base_url, interactive, show_rag_impact):
     """
     Generate Linux commands from natural language descriptions.
     
     MODES:
-    - Offline: Uses local Mixtral-8x7B model with 4-bit quantization (default)
     - Online: Uses OpenAI-compatible API (requires API key)
-    - RAG: Mixtral-8x7B + Linux documentation retrieval (best accuracy)
-    - Compare: Run all modes and compare results
+    - Online+RAG: Uses API with Linux documentation retrieval (best accuracy)
+    - Ollama: Uses Ollama with GPT-OSS models (open source)
+    - Ollama+RAG: Uses GPT-OSS with Linux documentation retrieval
     
     EXAMPLES:
     gen-cmd "Remove all .tmp files recursively in the folder ./mystuff/"
-    gen-cmd --mode rag "find all text files"
+    gen-cmd --mode online-rag "find all text files"
     gen-cmd --mode compare "list all files"
     gen-cmd --mode online --api-key YOUR_KEY "list all files"
     gen-cmd --interactive  # Interactive mode with mode selection
@@ -190,11 +218,14 @@ def gen_cmd(description, mode, offline, online, api_key, base_url, interactive, 
     gen-cmd --show-rag-impact --interactive  # Interactive RAG demo
     """
     
+    # Setup signal handlers for graceful shutdown (critical for Docker)
+    setup_signal_handlers()
+    
     # Initialize configuration
     config = Config()
     
     # Determine mode from arguments
-    selected_mode = determine_mode(mode, offline, online, config)
+    selected_mode = determine_mode(mode, online, config)
     
     # Set API key if provided
     if api_key:
@@ -277,7 +308,7 @@ def generate_command(description, llm_engine, command_parser, shift_tab_completi
         generated_command = llm_engine.generate_command(description)
         
         # Check for shutdown request after generation
-        if shutdown_requested:
+        if get_shutdown_requested():
             console.print("[yellow]🛑 Command generation cancelled by user.[/yellow]")
             return
         
@@ -291,7 +322,9 @@ def generate_command(description, llm_engine, command_parser, shift_tab_completi
                 parsed_command = command_parser.parse_command(repaired)
 
                 # If the repair came from online fallback, ask user to approve adding to RAG cache
-                if llm_engine.has_pending_rag_seed():
+                # Only ask when in offline modes (offline or rag), not when in online modes
+                current_mode = config.get('mode', 'online')
+                if llm_engine.has_pending_rag_seed() and current_mode in ['offline', 'rag']:
                     seed = llm_engine.get_and_clear_pending_rag_seed()
                     if seed:
                         seed_description, seed_command = seed
@@ -361,7 +394,7 @@ def generate_command(description, llm_engine, command_parser, shift_tab_completi
         # Ask for confirmation to execute
         if click.confirm("Execute this command?"):
             # Check for shutdown request before execution
-            if shutdown_requested:
+            if get_shutdown_requested():
                 console.print("[yellow]🛑 Command execution cancelled by user.[/yellow]")
                 return
                 
@@ -384,7 +417,7 @@ def generate_command(description, llm_engine, command_parser, shift_tab_completi
                     console.print(f"Error: {stderr}")
                 
                 # Execution-based online fallback
-                current_mode = config.get('mode', 'offline')
+                current_mode = config.get('mode', 'online')
                 if current_mode in ['offline', 'rag']:  # Only offer fallback for offline modes
                     console.print("\n[yellow]💡 The command failed to execute properly.[/yellow]")
                     if click.confirm("Would you like to try online mode to generate a better command?"):
@@ -455,14 +488,14 @@ def run_interactive_mode(llm_engine, command_parser, shift_tab_completion, safet
     # Setup signal handlers for graceful shutdown
     setup_signal_handlers()
     
-    current_mode = config.get('mode', 'offline')
+    current_mode = config.get('mode', 'online')
     
     console.print(Panel(
         f"Linux AI Command Generator - Interactive Mode\n"
-        f"Current Mode: {'🔌 Offline' if current_mode == 'offline' else '🌐 Online' if current_mode == 'online' else '📚 Offline+RAG' if current_mode == 'rag' else '🌐📚 Online+RAG'}\n\n"
+        f"Current Mode: {'🌐 Online' if current_mode == 'online' else '🌐📚 Online+RAG' if current_mode == 'online-rag' else '🤖 Ollama' if current_mode == 'ollama' else '🤖📚 GPT-OSS+RAG'}\n\n"
         "Commands:\n"
         "• Type your natural language description\n"
-        "• 'mode' - Switch between offline/online/Offline+RAG/Online+RAG modes or compare all\n"
+        "• 'mode' - Switch between online/online+RAG/Ollama/GPT-OSS+RAG modes or compare all\n"
         "• 'preload' - Preload both modes for instant switching\n"
         "• 'cache' - Manage model cache\n"
         "• 'shift+tab' - Intelligent command completion\n"
@@ -478,13 +511,22 @@ def run_interactive_mode(llm_engine, command_parser, shift_tab_completion, safet
     while True:
         try:
             # Check for shutdown request
-            if shutdown_requested:
+            if get_shutdown_requested():
                 console.print("\n[yellow]👋 Goodbye! Thanks for using Linux AI Command Generator![/yellow]")
                 break
                 
             # Create nice mode display for prompt
-            mode_display = {'offline': '🔌 Offline', 'online': '🌐 Online', 'rag': '📚 Offline+RAG', 'online-rag': '🌐📚 Online+RAG'}.get(current_mode, current_mode)
-            description = Prompt.ask(f"\n[bold blue]Describe the command you want to generate (mode: {mode_display})")
+            mode_display = {
+                'online': '🌐 Online', 
+                'online-rag': '🌐📚 Online+RAG',
+                'ollama': '🤖 Ollama',
+                'ollama-rag': '🤖📚 GPT-OSS+RAG'
+            }.get(current_mode, current_mode)
+            description = input(f"\nDescribe the command you want to generate (mode: {mode_display}): ")
+            
+            # Reset shutdown flag when user continues with normal input
+            if get_shutdown_requested() and description.strip():
+                set_shutdown_requested(False)
             
             # Sanitize input to remove invalid UTF-8 characters
             description = description.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
@@ -506,10 +548,14 @@ def run_interactive_mode(llm_engine, command_parser, shift_tab_completion, safet
                     continue
                 elif new_mode:
                     # Switch mode without recreating the engine
-                    llm_engine.switch_mode(new_mode)
-                    shift_tab_completion = ShiftTabCompletion(llm_engine, command_parser)
-                    current_mode = new_mode
-                    console.print(f"[green]Switched to {current_mode} mode[/green]")
+                    try:
+                        llm_engine.switch_mode(new_mode)
+                        shift_tab_completion = ShiftTabCompletion(llm_engine, command_parser)
+                        current_mode = new_mode
+                        console.print(f"[green]Switched to {current_mode} mode[/green]")
+                    except Exception as e:
+                        console.print(f"[red]Failed to switch to {new_mode} mode: {e}[/red]")
+                        console.print("[yellow]Continuing with current mode...[/yellow]")
                 continue
             
             elif description.lower() == 'compare':
@@ -562,26 +608,23 @@ def run_interactive_mode(llm_engine, command_parser, shift_tab_completion, safet
 
 def switch_mode_interactive(config):
     """Switch mode in interactive session."""
-    current_mode = config.get('mode', 'offline')
+    current_mode = config.get('mode', 'online')
     
     console.print(f"\n[blue]Current mode: {current_mode}[/blue]")
-    console.print("1. Switch to offline mode")
-    console.print("2. Switch to online mode")
-    console.print("3. Switch to Offline+RAG mode")
-    console.print("4. Switch to Online+RAG mode")
+    console.print("1. Switch to online mode")
+    console.print("2. Switch to online mode + RAG")
+    console.print("3. Switch to Ollama mode (GPT-OSS)")
+    console.print("4. Switch to GPT-OSS + RAG")
     console.print("5. Compare all modes")
     console.print("6. Cancel")
     
-    choice = Prompt.ask("Select option (1-6)", choices=["1", "2", "3", "4", "5", "6"], default="6")
+    choice = input("Select option (1-6) [6]: ").strip() or "6"
     
     if choice == "1":
-        config.set('mode', 'offline')
-        return 'offline'
-    elif choice == "2":
         # Check for API key
         api_key = config.get('api.api_key') or os.getenv('OPENAI_API_KEY')
         if not api_key:
-            api_key = Prompt.ask("Enter API key for online mode", password=True)
+            api_key = input("Enter API key for online mode: ")
             if api_key:
                 config.set('api.api_key', api_key)
             else:
@@ -589,21 +632,24 @@ def switch_mode_interactive(config):
                 return None
         config.set('mode', 'online')
         return 'online'
-    elif choice == "3":
-        config.set('mode', 'rag')
-        return 'rag'
-    elif choice == "4":
+    elif choice == "2":
         # Check for API key
         api_key = config.get('api.api_key') or os.getenv('OPENAI_API_KEY')
         if not api_key:
-            api_key = Prompt.ask("Enter API key for Online+RAG mode", password=True)
+            api_key = input("Enter API key for online mode + RAG: ")
             if api_key:
                 config.set('api.api_key', api_key)
             else:
-                console.print("[red]API key required for Online+RAG mode[/red]")
+                console.print("[red]API key required for online mode + RAG[/red]")
                 return None
         config.set('mode', 'online-rag')
         return 'online-rag'
+    elif choice == "3":
+        config.set('mode', 'ollama')
+        return 'ollama'
+    elif choice == "4":
+        config.set('mode', 'ollama-rag')
+        return 'ollama-rag'
     elif choice == "5":
         return 'compare'
     else:
@@ -764,7 +810,7 @@ def show_interactive_help():
         "📚 Interactive Mode Help\n\n"
         "🔧 COMMANDS:\n"
         "• Type any natural language description to generate a Linux command\n"
-        "• 'mode' - Switch between offline/online/Offline+RAG/Online+RAG modes or compare all\n"
+        "• 'mode' - Switch between online/online+RAG/Ollama/GPT-OSS+RAG modes or compare all\n"
         "• 'compare' - Direct access to comparison mode\n"
         "• 'preload' - Preload both modes for instant switching\n"
         "• 'cache' - Manage model cache\n"
@@ -795,14 +841,14 @@ def run_comparison_mode(description, command_parser, shift_tab_completion, safet
     console.print(f"\n[bold blue]Comparing all modes for:[/bold blue] {description}\n")
     
     results = {}
-    modes_to_test = ['offline', 'rag', 'online', 'online-rag']
+    modes_to_test = ['online', 'online-rag', 'ollama', 'ollama-rag']
     
     # Mode display names
     mode_names = {
-        'offline': '🔌 Offline',
-        'rag': '📚 Offline+RAG', 
         'online': '🌐 Online',
-        'online-rag': '🌐📚 Online+RAG'
+        'online-rag': '🌐📚 Online+RAG', 
+        'ollama': '🤖 Ollama',
+        'ollama-rag': '🤖📚 GPT-OSS+RAG'
     }
     
     # Test each mode

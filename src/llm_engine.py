@@ -39,14 +39,16 @@ class LLMEngine:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # Initialize based on mode
-        mode = self.config.get('mode', 'offline')
-        if mode == 'offline':
-            self._load_offline_model()
-        elif mode == 'rag':
-            self._load_offline_model()
-            self._setup_rag_engine()
+        mode = self.config.get('mode', 'online')
+        if mode == 'online':
+            self._setup_online_client()
         elif mode == 'online-rag':
             self._setup_online_client()
+            self._setup_rag_engine()
+        elif mode == 'ollama':
+            self._setup_ollama_client()
+        elif mode == 'ollama-rag':
+            self._setup_ollama_client()
             self._setup_rag_engine()
         else:
             self._setup_online_client()
@@ -57,17 +59,17 @@ class LLMEngine:
             device = 'cuda'
             gpu_name = torch.cuda.get_device_name(0)
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            print(f"🚀 Using GPU: {gpu_name}")
-            print(f"💾 GPU Memory: {gpu_memory:.1f} GB")
-            print(f"🔧 Device: {device.upper()}")
+            print(f"Using GPU: {gpu_name}")
+            print(f"GPU Memory: {gpu_memory:.1f} GB")
+            print(f"Device: {device.upper()}")
         elif torch.backends.mps.is_available():
             device = 'mps'
-            print(f"🍎 Using Apple Silicon GPU (MPS)")
-            print(f"🔧 Device: {device.upper()}")
+            print(f"Using Apple Silicon GPU (MPS)")
+            print(f"Device: {device.upper()}")
         else:
             device = 'cpu'
-            print(f"💻 Using CPU")
-            print(f"🔧 Device: {device.upper()}")
+            print(f"Using CPU")
+            print(f"Device: {device.upper()}")
         
         return device
     
@@ -484,11 +486,7 @@ class LLMEngine:
             print("🔄 Falling back to normal loading...")
             return False
     
-    def _load_offline_model(self):
-        """Load the offline model with caching."""
-        try:
-            model_config = self.config.model_config
-            base_model_name = model_config.get('base_model', 'mistralai/Mixtral-8x7B-Instruct-v0.1')
+    def _setup_online_client(self):
             
             # Check for pre-quantized model cache first (FASTEST option!)
             quantized_cache_dir = Path("./quantized_model_cache")
@@ -624,15 +622,6 @@ class LLMEngine:
             
             # Save model to cache for faster loading next time
             self._save_model_to_cache()
-            
-            # Auto-save quantized cache after first successful load
-            self._auto_save_quantized_cache(base_model_name)
-            
-        except Exception as e:
-            print(f"Error loading offline model: {e}")
-            print("Falling back to online mode...")
-            self._setup_online_client()
-    
     def _setup_online_client(self):
         """Setup OpenAI-compatible client for online inference."""
         api_config = self.config.api_config
@@ -656,6 +645,46 @@ class LLMEngine:
         
         print("Online client setup successfully")
     
+    def _setup_ollama_client(self):
+        """Setup Ollama client for local inference."""
+        import requests
+        
+        ollama_config = self.config.get('ollama', {})
+        self.ollama_base_url = ollama_config.get('base_url', 'http://localhost:11434')
+        self.ollama_model = ollama_config.get('model', 'gpt-oss:20b')
+        
+        # Test connection to Ollama
+        try:
+            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                model_names = [model['name'] for model in models]
+                
+                if self.ollama_model not in model_names:
+                    print(f"WARNING: Model {self.ollama_model} not found in Ollama")
+                    print(f"Available models: {', '.join(model_names)}")
+                    if model_names:
+                        self.ollama_model = model_names[0]
+                        print(f"Using {self.ollama_model} instead")
+                    else:
+                        raise ValueError("No models available in Ollama")
+                
+                print(f"SUCCESS: Ollama client setup successfully")
+                print(f"Using model: {self.ollama_model}")
+                print(f"Ollama URL: {self.ollama_base_url}")
+            else:
+                raise ConnectionError(f"Ollama API returned status {response.status_code}")
+        except requests.exceptions.ConnectionError as e:
+            print(f"ERROR: Cannot connect to Ollama at {self.ollama_base_url}")
+            print(f"Connection error: {e}")
+            print("Make sure Ollama is running on your host machine")
+            raise ConnectionError(f"Cannot connect to Ollama. Make sure Ollama is running on {self.ollama_base_url}")
+        except Exception as e:
+            print(f"ERROR: Failed to setup Ollama client: {e}")
+            print(f"Ollama URL: {self.ollama_base_url}")
+            print(f"Model: {self.ollama_model}")
+            raise Exception(f"Failed to setup Ollama client: {e}")
+    
     def _setup_rag_engine(self):
         """Setup RAG engine for retrieval-augmented generation."""
         try:
@@ -678,42 +707,23 @@ class LLMEngine:
     
     def generate_command(self, description: str) -> str:
         """Generate a Linux command from natural language description."""
-        mode = self.config.get('mode', 'offline')
+        mode = self.config.get('mode', 'online')
         
-        if mode == 'rag' and self.rag_engine:
-            return self._generate_with_rag(description)
-        elif mode == 'online-rag' and self.rag_engine:
+        if mode == 'online-rag' and self.rag_engine:
             return self._generate_with_online_rag(description)
-        elif self.pipeline:
-            return self._generate_offline(description)
+        elif mode == 'ollama-rag' and self.rag_engine:
+            return self._generate_with_ollama_rag(description)
+        elif mode == 'ollama':
+            return self._generate_with_ollama(description)
         else:
             return self._generate_online(description)
     
-    def _generate_offline(self, description: str) -> str:
-        """Generate command using offline model."""
-        prompt = self._create_prompt(description)
-        
-        # Generate response (optimized for speed)
-        response = self.pipeline(
-            prompt,
-            max_new_tokens=100,  # Reduced from 200 for faster generation
-            num_return_sequences=1,
-            temperature=0.1,     # Very low temperature for fastest, most deterministic output
-            do_sample=False,     # Greedy decoding is faster than sampling
-            pad_token_id=self.tokenizer.eos_token_id
-        )
-        
-        generated_text = response[0]['generated_text']
-        command = self._extract_command(generated_text, prompt)
-        
-        return command
-    
-    def _clean_rag_templates(self, context: str) -> str:
-        """Clean template placeholders from RAG context to avoid confusion.
+    def _clean_rag_templates(self, context: str, user_query: str = "") -> str:
+        """Clean template placeholders from RAG context using LLM for executable commands.
         
         Converts template examples like:
           head {{[-n|--lines]}} {{count}} {{path/to/file}}
-        Into concrete examples like:
+        Into concrete executable examples like:
           head -n 10 file.txt
         
         PRESERVES known-good commands from cache.
@@ -724,43 +734,151 @@ class LLMEngine:
         if "🎯 Known-good command for this task:" in context:
             return context
         
-        # Common template replacements
+        # Filter out misleading commands for specific queries
+        if 'duplicate' in context.lower() and 'name' in context.lower():
+            # Remove content-based commands for filename duplicates
+            context = re.sub(r'## fgrep.*?(?=##|\Z)', '', context, flags=re.DOTALL)
+            context = re.sub(r'## grep.*?(?=##|\Z)', '', context, flags=re.DOTALL)
+            context = re.sub(r'## md5sum.*?(?=##|\Z)', '', context, flags=re.DOTALL)
+        
+        # Check if context contains templates
+        template_patterns = re.findall(r'\{\{[^}]+\}\}', context)
+        if not template_patterns:
+            return context  # No templates found
+        
+        # Use LLM to generate executable commands from templates
+        try:
+            return self._generate_executable_from_templates(context, user_query, template_patterns)
+        except Exception as e:
+            # Fallback to simple template replacement
+            return self._fallback_template_replacement(context)
+    
+    def _generate_executable_from_templates(self, context: str, user_query: str, templates: list) -> str:
+        """Use LLM to convert templates to executable commands"""
+        
+        prompt = f"""
+        Convert these Linux command templates to executable commands:
+        
+        Template Context:
+        {context}
+        
+        User Intent: {user_query}
+        
+        Found Templates: {', '.join(templates)}
+        
+        Task: Replace ALL template placeholders with realistic values to create executable commands.
+        
+        Requirements:
+        - Output ONLY executable Linux commands
+        - Replace {{path/to/file}} with realistic file paths like 'file.txt', 'document.pdf'
+        - Replace {{count}} with realistic numbers like '10', '5', '100'
+        - Replace {{pattern}} with realistic patterns like '*.txt', '*.log'
+        - Replace {{user}} with '$(whoami)' or realistic usernames
+        - Replace {{date}} with '$(date +%Y-%m-%d)' or similar
+        - Keep command structure intact
+        - Make commands safe and commonly used
+        
+        Output format: Just the executable commands, one per line.
+        """
+        
+        try:
+            response = self.pipeline(
+                prompt,
+                max_new_tokens=200,
+                num_return_sequences=1,
+                temperature=0.1,
+                do_sample=False,
+                pad_token_id=self.tokenizer.eos_token_id
+            )
+            
+            generated_text = response[0]['generated_text']
+            executable_commands = self._extract_executable_commands(generated_text)
+            return executable_commands if executable_commands else context
+            
+        except Exception as e:
+            # Fallback to simple replacement
+            return self._fallback_template_replacement(context)
+    
+    def _extract_executable_commands(self, llm_response: str) -> str:
+        """Extract clean executable commands from LLM response"""
+        import re
+        
+        # Split response into lines and filter for commands
+        lines = llm_response.strip().split('\n')
+        executable_commands = []
+        
+        for line in lines:
+            line = line.strip()
+            # Skip empty lines, comments, and explanations
+            if (line and 
+                not line.startswith('#') and 
+                not line.startswith('//') and
+                not line.startswith('Example') and
+                not line.startswith('Output') and
+                not '→' in line and
+                not ':' in line[:10]):  # Skip explanation lines
+                
+                # Clean up the command
+                command = line.split('→')[-1].strip() if '→' in line else line
+                command = command.split(':')[-1].strip() if ':' in command else command
+                
+                if command and self._looks_like_executable_command(command):
+                    executable_commands.append(command)
+        
+        return '\n'.join(executable_commands)
+    
+    def _looks_like_executable_command(self, text: str) -> bool:
+        """Check if text looks like an executable Linux command"""
+        import re
+        
+        if not text:
+            return False
+        
+        # Remove markdown formatting
+        text = re.sub(r'```\w*\s*', '', text)
+        text = re.sub(r'```\s*$', '', text)
+        text = text.strip()
+        
+        # Check if it starts with a common Linux command
+        first_word = text.split()[0].lower() if text.split() else ""
+        common_commands = [
+            'ls', 'find', 'grep', 'cat', 'head', 'tail', 'awk', 'sed', 'ps', 'top',
+            'mkdir', 'touch', 'cp', 'mv', 'rm', 'cd', 'pwd', 'chmod', 'chown',
+            'df', 'du', 'kill', 'which', 'locate', 'wc', 'sort', 'uniq', 'date',
+            'free', 'uname', 'uptime', 'tar', 'gzip', 'curl', 'wget', 'ssh',
+            'systemctl', 'service', 'mount', 'umount', 'netstat', 'ss', 'ping'
+        ]
+        
+        return first_word in common_commands
+    
+    def _fallback_template_replacement(self, context: str) -> str:
+        """Simple fallback for template replacement"""
+        import re
+        
+        # Simple replacement patterns
         replacements = {
-            # File paths
             r'\{\{path/to/file\}\}': 'file.txt',
             r'\{\{filename\}\}': 'file.txt',
             r'\{\{file\}\}': 'file.txt',
             r'\{\{path/to/directory\}\}': 'mydir',
             r'\{\{directory\}\}': 'mydir',
-            
-            # Patterns
             r'\{\{\*\.ext\}\}': '*.txt',
             r'\{\{pattern\}\}': '*.txt',
             r'\{\{\*pattern\*\}\}': '*file*',
-            
-            # Numbers and counts
             r'\{\{count\}\}': '10',
             r'\{\{number\}\}': '10',
             r'\{\{n\}\}': '10',
-            
-            # Options (make concrete or remove)
             r'\{\{\[-n\|--lines\]\}\}': '-n',
             r'\{\{\[-c\|--bytes\]\}\}': '-c',
             r'\{\{\[-F\|--fixed-strings\]\}\}': '-F',
             r'\{\{\[options\]\}\}': '',
-            
-            # Search patterns
             r'\{\{search_pattern\}\}': 'text',
             r'\{\{exact_string\}\}': 'text',
             r'\{\{foo\}\}': 'pattern',
-            
-            # Paths
             r'\{\{root_path\}\}': '.',
             r'\{\{\*/path/\*/\*\.ext\}\}': '*.txt',
             r'\{\{\*/filename\}\}': '*/file.txt',
-            
-            # Generic catch-all for any remaining templates
-            r'\{\{[^}]+\}\}': 'value',
+            r'\{\{[^}]+\}\}': 'value',  # Generic catch-all
         }
         
         cleaned = context
@@ -768,32 +886,6 @@ class LLMEngine:
             cleaned = re.sub(pattern, replacement, cleaned)
         
         return cleaned
-    
-    def _generate_with_rag(self, description: str) -> str:
-        """Generate command using offline model augmented with RAG."""
-        # Get relevant context from RAG
-        context = self.rag_engine.get_context_for_query(description)
-        
-        # Clean templates from context to avoid confusion
-        cleaned_context = self._clean_rag_templates(context)
-        
-        # Create augmented prompt with cleaned context
-        prompt = self._create_rag_prompt(description, cleaned_context)
-        
-        # Generate response (optimized for speed)
-        response = self.pipeline(
-            prompt,
-            max_new_tokens=100,  # Reduced from 200 for faster generation
-            num_return_sequences=1,
-            temperature=0.1,     # Very low temperature for fastest, most deterministic output
-            do_sample=False,     # Greedy decoding is faster than sampling
-            pad_token_id=self.tokenizer.eos_token_id
-        )
-        
-        generated_text = response[0]['generated_text']
-        command = self._extract_command(generated_text, prompt)
-        
-        return command
     
     def _generate_with_online_rag(self, description: str) -> str:
         """Generate command using online API augmented with RAG."""
@@ -811,7 +903,7 @@ class LLMEngine:
         context = self.rag_engine.get_context_for_query(description)
         
         # Clean templates from context to avoid confusion
-        cleaned_context = self._clean_rag_templates(context)
+        cleaned_context = self._clean_rag_templates(context, description)
         
         # Create augmented prompt with cleaned context for online API
         prompt = self._create_online_rag_prompt(description, cleaned_context)
@@ -877,6 +969,93 @@ class LLMEngine:
         except Exception as e:
             raise Exception(f"API request failed: {e}")
     
+    def _generate_with_ollama(self, description: str) -> str:
+        """Generate command using Ollama API."""
+        import requests
+        
+        # Ensure Ollama client is setup
+        if not hasattr(self, 'ollama_model'):
+            print("🔄 Setting up Ollama client...")
+            self._setup_ollama_client()
+        
+        prompt = self._create_prompt(description)
+        
+        try:
+            payload = {
+                "model": self.ollama_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "top_p": 0.9,
+                    "max_tokens": 100
+                }
+            }
+            
+            response = requests.post(
+                f"{self.ollama_base_url}/api/generate",
+                json=payload,
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                generated_text = result.get('response', '')
+                command = self._extract_command(generated_text, prompt)
+                return command
+            else:
+                raise Exception(f"Ollama API error: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            raise Exception(f"Ollama request failed: {e}")
+    
+    def _generate_with_ollama_rag(self, description: str) -> str:
+        """Generate command using Ollama API augmented with RAG."""
+        import requests
+        
+        # Ensure Ollama client is setup
+        if not hasattr(self, 'ollama_model'):
+            print("🔄 Setting up Ollama client...")
+            self._setup_ollama_client()
+        
+        # Get relevant context from RAG
+        context = self.rag_engine.get_context_for_query(description)
+        
+        # Clean templates from context to avoid confusion
+        cleaned_context = self._clean_rag_templates(context, description)
+        
+        # Create augmented prompt with cleaned context
+        prompt = self._create_rag_prompt(description, cleaned_context)
+        
+        try:
+            payload = {
+                "model": self.ollama_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "top_p": 0.9,
+                    "max_tokens": 150
+                }
+            }
+            
+            response = requests.post(
+                f"{self.ollama_base_url}/api/generate",
+                json=payload,
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                generated_text = result.get('response', '')
+                command = self._extract_command(generated_text, prompt)
+                return command
+            else:
+                raise Exception(f"Ollama API error: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            raise Exception(f"Ollama RAG request failed: {e}")
+    
     def _create_prompt(self, description: str) -> str:
         """Create prompt for command generation - optimized for speed."""
         return f"""Generate Linux command for: {description}
@@ -913,7 +1092,7 @@ Rules:
 
 Command:"""
         else:
-            # Standard RAG prompt
+            # Standard RAG prompt with better context filtering
             return f"""Generate Linux command for: {description}
 
 Context:
@@ -925,12 +1104,16 @@ Rules:
 - No placeholders (except {{}} in find -exec)
 - Use $(date) for dates, not literal strings
 - Simple and direct
+- For duplicate filenames: use find with -printf '%f' or basename
+- For duplicate content: use md5sum or sha256sum
+- Prefer simple commands over complex pipelines
 
 Examples:
 - "list files" → ls -la
 - "list files with date" → ls -lt
+- "duplicate filenames" → find . -type f -printf '%f\\n' | sort | uniq -d
 - "files today" → find . -type f -newermt "$(date +%Y-%m-%d)"
-- "find and grep" → find . -name "*.log" -exec grep 'error' {{}} \;
+- "find and grep" → find . -name "*.log" -exec grep 'error' {{}} \\;
 
 Command:"""
     
@@ -1097,21 +1280,61 @@ Command:"""
         return bool(re.search(r'find\s+.*-exec\s+.*\{\}.*\\;', command))
     
     def _fix_date_commands(self, command: str) -> str:
-        """Fix common date command issues."""
+        """Fix common date command issues using LLM-based repair."""
+        import re
+        
+        # Check if command has syntax issues that need fixing
+        needs_fixing = False
+        issues = []
+        
+        # Detect common date command issues
+        if '-newermt' in command and '!' in command:
+            needs_fixing = True
+            issues.append("extra exclamation mark in date command")
+        
+        if '-newermt' in command and 'tomorrow' in command:
+            needs_fixing = True
+            issues.append("overly complex date range with tomorrow")
+            
+        if 'date --date="today"' in command:
+            needs_fixing = True
+            issues.append("unnecessary date format complexity")
+        
+        # If no issues detected, return original command
+        if not needs_fixing:
+            return command
+        
+        print(f"🔧 Detected date command issues: {', '.join(issues)}")
+        print(f"🔧 Using LLM to repair command syntax...")
+        
+        try:
+            # Use LLM-based repair for intelligent fixing
+            description = "Fix Linux find command with date filtering"
+            repaired = self.repair_command(description, command)
+            
+            if repaired and repaired != command:
+                print(f"✅ LLM repaired command successfully")
+                return repaired
+            else:
+                print(f"⚠️  LLM repair failed, using fallback regex fixes")
+                return self._fallback_date_fixes(command)
+                
+        except Exception as e:
+            print(f"⚠️  LLM repair error: {e}, using fallback regex fixes")
+            return self._fallback_date_fixes(command)
+    
+    def _fallback_date_fixes(self, command: str) -> str:
+        """Fallback regex-based fixes for date commands."""
         import re
         
         # Fix the specific issue we saw: extra ! in date commands
-        # Pattern: $(date --date="today" +"%Y-%m-%d")! -newermt $(date --date="tomorrow" +"%Y-%m-%d")
         if '-newermt' in command and '!' in command:
-            print(f"🔧 Fixing date command with extra exclamation mark")
-            # Remove the ! from date commands
-            command = re.sub(r'\+\"[^"]*\"\!', lambda m: m.group(0)[:-1], command)
+            print(f"🔧 Applying regex fix for extra exclamation mark")
+            command = re.sub(r'\)\"!', ')', command)
             
         # Fix complex date ranges that are overly complicated
-        # Replace complex today/tomorrow logic with simple today logic
         if '-newermt' in command and 'tomorrow' in command:
-            print(f"🔧 Simplifying overly complex date command")
-            # Replace with simple today command
+            print(f"🔧 Applying regex fix for complex date range")
             command = re.sub(
                 r'-newermt\s+\$\(date[^)]*\)\!\s+-newermt\s+\$\(date[^)]*tomorrow[^)]*\)', 
                 r'-newermt "$(date +%Y-%m-%d)"', 
@@ -1120,7 +1343,7 @@ Command:"""
         
         # Fix date format issues
         if 'date --date="today"' in command:
-            print(f"🔧 Simplifying date command format")
+            print(f"🔧 Applying regex fix for date format")
             command = command.replace('date --date="today"', 'date')
             
         return command
@@ -1285,11 +1508,15 @@ Generate ONLY the corrected Linux command:"""
             "- Do NOT use placeholders like {{...}} or [[...]].",
             "- Prefer the simplest correct command for the task.",
             "- Generate a single, valid, executable Linux bash command.",
+            "- Fix syntax errors like extra punctuation marks.",
+            "- Use proper date command syntax: $(date -d 'yesterday' +%Y-%m-%d)",
+            "- Ensure proper quoting and escaping in find commands.",
         ]
         if context:
             parts += ["\nLinux Documentation Context:", context]
         if candidate:
             parts += ["\nThe previous attempt was malformed:", candidate]
+            parts += ["\nFix the syntax errors and provide a corrected command."]
         parts += [
             "\nTask: " + description,
             "\nLinux command:",
@@ -1510,8 +1737,8 @@ Generate ONLY the corrected Linux command:"""
             return True
     
     def switch_mode(self, mode: str):
-        """Switch between offline, online, and RAG modes."""
-        current_mode = self.config.get('mode', 'offline')
+        """Switch between online, online-rag, ollama, and ollama-rag modes."""
+        current_mode = self.config.get('mode', 'online')
         
         # If already in the requested mode, don't reload
         if current_mode == mode:
@@ -1520,24 +1747,13 @@ Generate ONLY the corrected Linux command:"""
         
         self.config.set('mode', mode)
         
-        if mode == 'offline':
-            # Only load offline model if not already loaded
-            if self.pipeline is None:
-                print("🔄 Loading offline model...")
-                self._load_offline_model()
+        if mode == 'online':
+            # Only setup online client if not already setup
+            if not hasattr(self, 'client'):
+                print("🔄 Setting up online client...")
+                self._setup_online_client()
             else:
-                print("✅ Switched to offline mode (model already loaded)")
-        elif mode == 'rag':
-            # Load offline model if needed
-            if self.pipeline is None:
-                print("🔄 Loading offline model for RAG...")
-                self._load_offline_model()
-            # Setup RAG engine if needed
-            if self.rag_engine is None:
-                print("🔄 Setting up RAG engine...")
-                self._setup_rag_engine()
-            else:
-                print("✅ Switched to RAG mode (components already loaded)")
+                print("✅ Switched to online mode (client already setup)")
         elif mode == 'online-rag':
             # Setup online client if needed
             if not hasattr(self, 'client'):
@@ -1549,7 +1765,25 @@ Generate ONLY the corrected Linux command:"""
                 self._setup_rag_engine()
             else:
                 print("✅ Switched to online-rag mode (components already loaded)")
-        else:  # online mode
+        elif mode == 'ollama':
+            # Setup Ollama client if needed
+            if not hasattr(self, 'ollama_model'):
+                print("🔄 Setting up Ollama client...")
+                self._setup_ollama_client()
+            else:
+                print("✅ Switched to ollama mode (client already setup)")
+        elif mode == 'ollama-rag':
+            # Setup Ollama client if needed
+            if not hasattr(self, 'ollama_model'):
+                print("🔄 Setting up Ollama client...")
+                self._setup_ollama_client()
+            # Setup RAG engine if needed
+            if self.rag_engine is None:
+                print("🔄 Setting up RAG engine...")
+                self._setup_rag_engine()
+            else:
+                print("✅ Switched to ollama-rag mode (components already loaded)")
+        else:  # Default to online
             # Only setup online client if not already setup
             if not hasattr(self, 'client'):
                 print("🔄 Setting up online client...")
@@ -1561,12 +1795,11 @@ Generate ONLY the corrected Linux command:"""
     
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the current model."""
-        if self.pipeline:
+        if hasattr(self, 'ollama_model'):
             return {
-                'mode': 'offline',
-                'model': self.config.model_config.get('base_model'),
-                'device': self.device,
-                'lora_loaded': False,  # Not using LoRA
+                'mode': 'ollama',
+                'model': self.ollama_model,
+                'base_url': self.ollama_base_url,
             }
         else:
             return {
@@ -1577,40 +1810,43 @@ Generate ONLY the corrected Linux command:"""
     
     def is_mode_configured(self, mode: str) -> bool:
         """Check if a mode is properly configured."""
-        if mode == 'offline':
-            return self.pipeline is not None
-        elif mode == 'online':
+        if mode == 'online':
             api_key = self.config.get('api.api_key') or os.getenv('OPENAI_API_KEY')
             return api_key is not None and hasattr(self, 'client')
+        elif mode == 'online-rag':
+            api_key = self.config.get('api.api_key') or os.getenv('OPENAI_API_KEY')
+            return api_key is not None and hasattr(self, 'client') and self.rag_engine is not None
+        elif mode in ['ollama', 'ollama-rag']:
+            return hasattr(self, 'ollama_model')
         return False
     
     def get_current_mode(self) -> str:
         """Get the current mode."""
-        return self.config.get('mode', 'offline')
+        return self.config.get('mode', 'online')
     
     def preload_both_modes(self):
-        """Preload both offline and online modes for instant switching."""
+        """Preload both online and ollama modes for instant switching."""
         print("🔄 Preloading both modes for instant switching...")
-        
-        # Load offline model
-        if self.pipeline is None:
-            print("📦 Loading offline model...")
-            self._load_offline_model()
         
         # Setup online client
         if not hasattr(self, 'client'):
             print("🌐 Setting up online client...")
             self._setup_online_client()
         
+        # Setup Ollama client
+        if not hasattr(self, 'ollama_model'):
+            print("🤖 Setting up Ollama client...")
+            self._setup_ollama_client()
+        
         print("✅ Both modes preloaded - instant switching available!")
-    
-    def is_offline_ready(self) -> bool:
-        """Check if offline mode is ready."""
-        return self.pipeline is not None
     
     def is_online_ready(self) -> bool:
         """Check if online mode is ready."""
         return hasattr(self, 'client')
+    
+    def is_ollama_ready(self) -> bool:
+        """Check if Ollama mode is ready."""
+        return hasattr(self, 'ollama_model')
     
     def clear_model_cache(self):
         """Clear the model cache."""

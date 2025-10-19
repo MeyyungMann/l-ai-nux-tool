@@ -157,7 +157,7 @@ services:
           memory: 24G
         reservations:
           memory: 8G
-    entrypoint: ["python", "gen_cmd.py", "--mode", "rag", "--interactive"]
+    entrypoint: ["python", "gen_cmd.py", "--mode", "online-rag", "--interactive"]
     profiles: ["manual"]  # Don't start with 'up', use 'run' instead
 
   # Compare Mode - Run all modes and compare results
@@ -257,4 +257,85 @@ services:
         reservations:
           memory: 8G
     command: python test_50_queries_offline.py
+    profiles: ["manual"]
+
+  # Ollama Mode - GPT-OSS model via Ollama
+  # Usage: docker-compose run --rm lai-nux-tool-ollama
+  lai-nux-tool-ollama:
+    build: 
+      context: .
+      args:
+        - HF_HUB_DISABLE_SYMLINKS_WARNING=1
+        - HF_HUB_DISABLE_TELEMETRY=1
+    image: lai-nux-tool:latest
+    container_name: lai-nux-tool-ollama
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      HF_HUB_DISABLE_SYMLINKS_WARNING: 1
+      HF_HUB_DISABLE_TELEMETRY: 1
+      TORCH_CUDA_ARCH_LIST: "8.9"
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+      PYTHONUNBUFFERED: 1
+      TRANSFORMERS_VERBOSITY: error
+    volumes:
+      # Mount Ollama models cache
+      - ./ollama_models:/root/.ollama
+      # Mount app directory
+      - .:/app
+      # Mount home directory for configuration
+      - ~/.config:/root/.config
+    stdin_open: true
+    tty: true
+    shm_size: 16g
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+        reservations:
+          memory: 8G
+    command: ["bash", "-c", "bash /setup_ollama.sh && python gen_cmd.py --mode ollama --interactive"]
+    profiles: ["manual"]
+
+  # Ollama RAG Mode - GPT-OSS + Linux Documentation Retrieval
+  # Usage: docker-compose run --rm lai-nux-tool-ollama-rag
+  lai-nux-tool-ollama-rag:
+    build: 
+      context: .
+      args:
+        - HF_HUB_DISABLE_SYMLINKS_WARNING=1
+        - HF_HUB_DISABLE_TELEMETRY=1
+    image: lai-nux-tool:latest
+    container_name: lai-nux-tool-ollama-rag
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      HF_HUB_DISABLE_SYMLINKS_WARNING: 1
+      HF_HUB_DISABLE_TELEMETRY: 1
+      TORCH_CUDA_ARCH_LIST: "8.9"
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+      PYTHONUNBUFFERED: 1
+      TRANSFORMERS_VERBOSITY: error
+    volumes:
+      # Mount Ollama models cache
+      - ./ollama_models:/root/.ollama
+      # Mount RAG cache directories
+      - ./rag_cache:/root/.lai-nux-tool/rag_cache
+      - ./doc_cache:/root/.lai-nux-tool/doc_cache
+      # Mount app directory
+      - .:/app
+      # Mount home directory for configuration
+      - ~/.config:/root/.config
+    stdin_open: true
+    tty: true
+    shm_size: 16g
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+        reservations:
+          memory: 8G
+    command: ["bash", "-c", "bash /setup_ollama.sh && python gen_cmd.py --mode ollama-rag --interactive"]
     profiles: ["manual"]

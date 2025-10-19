@@ -27,6 +27,9 @@ RUN apt-get update && apt-get install -y \
     nvidia-cuda-toolkit \
     && rm -rf /var/lib/apt/lists/* || echo "CUDA toolkit installation failed - continuing without GPU support"
 
+# Install Ollama
+RUN curl -fsSL https://ollama.ai/install.sh | sh || echo "Ollama installation failed - continuing without Ollama support"
+
 # Create symbolic link for python
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
@@ -111,6 +114,10 @@ echo "🎯 Ready for Linux command testing!"' > /create_test_env.sh && chmod +x 
 # Copy and setup entrypoint script
 COPY sh_files/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# Copy and setup Ollama script
+COPY sh_files/setup_ollama.sh /setup_ollama.sh
+RUN chmod +x /setup_ollama.sh
 
 # Expose port (if needed for future web interface)
 EXPOSE 8000
