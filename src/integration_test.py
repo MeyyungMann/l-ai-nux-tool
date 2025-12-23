@@ -13,12 +13,12 @@ class TestLLMEngineIntegration:
     
     @pytest.mark.slow
     @pytest.mark.api
-    def test_llm_engine_initialization_online(self, mock_config, mock_openai_client, env_vars):
+    def test_llm_engine_initialization_online(self, mock_config, mock_openai_client, monkeypatch):
         """Test LLM engine initialization in online mode."""
-        from src.llm_engine import LLMEngine
+        from .llm_engine import LLMEngine
         
         # Set API key in environment
-        env_vars.set(OPENAI_API_KEY='test-key-123')
+        monkeypatch.setenv('OPENAI_API_KEY', 'test-key-123')
         mock_config.set('mode', 'online')
         mock_config.set('api.api_key', 'test-key-123')
         
@@ -28,12 +28,12 @@ class TestLLMEngineIntegration:
             assert hasattr(engine, 'client')
     
     @pytest.mark.api
-    def test_llm_engine_mode_switching(self, mock_config, mock_openai_client, env_vars):
+    def test_llm_engine_mode_switching(self, mock_config, mock_openai_client, monkeypatch):
         """Test switching between modes."""
-        from src.llm_engine import LLMEngine
+        from .llm_engine import LLMEngine
         
         # Set API key
-        env_vars.set(OPENAI_API_KEY='test-key-123')
+        monkeypatch.setenv('OPENAI_API_KEY', 'test-key-123')
         mock_config.set('mode', 'online')
         mock_config.set('api.api_key', 'test-key-123')
         
@@ -52,7 +52,7 @@ class TestRAGIntegration:
     
     def test_rag_engine_initialization(self, temp_cache_dir):
         """Test RAG engine initialization."""
-        from src.rag_engine import RAGEngine
+        from .rag_engine import RAGEngine
         
         # Skip if dependencies not available
         try:
@@ -64,8 +64,8 @@ class TestRAGIntegration:
     @pytest.mark.slow
     def test_rag_document_retrieval(self, temp_cache_dir, sample_command_docs):
         """Test document retrieval in RAG."""
-        from src.rag_engine import RAGEngine
-        from src.doc_collector import LinuxDocCollector
+        from .rag_engine import RAGEngine
+        from .doc_collector import LinuxDocCollector
         
         try:
             # Setup: Save sample docs
@@ -89,8 +89,8 @@ class TestCommandGenerationPipeline:
     def test_full_pipeline_with_mocks(self, mock_config, mock_llm_engine, 
                                       mock_rag_engine, sample_queries):
         """Test full command generation pipeline with mocked components."""
-        from src.command_parser import CommandParser
-        from src.enhanced_safety import EnhancedSafetySystem
+        from .command_parser import CommandParser
+        from .enhanced_safety import EnhancedSafetySystem
         
         parser = CommandParser()
         safety = EnhancedSafetySystem()
@@ -122,7 +122,7 @@ class TestConfigPersistence:
         assert mock_config.config_file.exists()
         
         # Reload config to verify persistence
-        from src.config import Config
+        from .config import Config
         config2 = Config()
         # Note: This will use default config dir, not our temp one
         # But we can verify the first config saved correctly

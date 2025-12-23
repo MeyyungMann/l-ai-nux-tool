@@ -34,7 +34,7 @@ def temp_cache_dir(temp_dir):
 @pytest.fixture
 def mock_config(temp_dir):
     """Create a mock configuration object."""
-    from src.config import Config
+    from .config import Config
     
     # Create config in temp directory
     config_file = temp_dir / 'config.yaml'
@@ -85,7 +85,7 @@ def mock_rag_engine():
 @pytest.fixture
 def sample_command_docs():
     """Sample command documentation for testing."""
-    from src.doc_collector import CommandDoc
+    from .doc_collector import CommandDoc
     
     return [
         CommandDoc(

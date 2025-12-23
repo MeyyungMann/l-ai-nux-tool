@@ -3,7 +3,7 @@ Unit tests for enhanced safety system.
 """
 
 import pytest
-from src.enhanced_safety import EnhancedSafetySystem
+from .enhanced_safety import EnhancedSafetySystem
 
 
 @pytest.mark.unit

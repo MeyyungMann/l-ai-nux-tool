@@ -5,7 +5,7 @@ Unit tests for document collector.
 import pytest
 import json
 from pathlib import Path
-from src.doc_collector import LinuxDocCollector, CommandDoc
+from .doc_collector import LinuxDocCollector, CommandDoc
 
 
 @pytest.mark.unit

@@ -3,7 +3,7 @@ Unit tests for command parser.
 """
 
 import pytest
-from src.command_parser import CommandParser
+from .command_parser import CommandParser
 
 
 @pytest.mark.unit

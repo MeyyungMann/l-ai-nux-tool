@@ -14,7 +14,7 @@ class TestLLMEngine:
     
     def test_llm_engine_initialization_online(self, mock_config, mock_openai_client, env_vars):
         """Test LLM engine initialization in online mode."""
-        from src.llm_engine import LLMEngine
+        from .llm_engine import LLMEngine
         
         mock_config.set('mode', 'online')
         mock_config.set('api.api_key', 'test-key-123')
@@ -27,7 +27,7 @@ class TestLLMEngine:
     
     def test_llm_engine_initialization_ollama(self, mock_config):
         """Test LLM engine initialization in Ollama mode."""
-        from src.llm_engine import LLMEngine
+        from .llm_engine import LLMEngine
         
         mock_config.set('mode', 'ollama')
         mock_config.set('ollama.base_url', 'http://localhost:11434')
@@ -52,7 +52,7 @@ class TestLLMEngine:
     
     def test_llm_engine_mode_switching(self, mock_config, mock_openai_client, env_vars):
         """Test switching between modes."""
-        from src.llm_engine import LLMEngine
+        from .llm_engine import LLMEngine
         
         mock_config.set('mode', 'online')
         mock_config.set('api.api_key', 'test-key-123')
@@ -67,7 +67,7 @@ class TestLLMEngine:
     
     def test_llm_engine_ollama_connection_error(self, mock_config):
         """Test Ollama connection error handling."""
-        from src.llm_engine import LLMEngine
+        from .llm_engine import LLMEngine
         
         mock_config.set('mode', 'ollama')
         mock_config.set('ollama.base_url', 'http://localhost:11434')
@@ -80,7 +80,7 @@ class TestLLMEngine:
     
     def test_llm_engine_device_detection(self, mock_config, mock_openai_client, env_vars):
         """Test device detection."""
-        from src.llm_engine import LLMEngine
+        from .llm_engine import LLMEngine
         
         mock_config.set('mode', 'online')
         mock_config.set('api.api_key', 'test-key-123')
