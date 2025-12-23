@@ -28,8 +28,10 @@ pywin32>=306; sys_platform == "win32"
 # RAG (Retrieval-Augmented Generation) dependencies
 sentence-transformers>=2.2.0; python_version >= "3.10"
 sentence-transformers>=2.0.0,<2.1.0; python_version < "3.10"
-faiss-cpu>=1.7.2; sys_platform != "linux"
-faiss-gpu>=1.7.2; sys_platform == "linux" and platform_machine == "x86_64"
+# Note: faiss-gpu is only available via Conda, not pip
+# For pip installations, use faiss-cpu (installed below)
+# For GPU support with Conda: conda install -c pytorch faiss-gpu
+faiss-cpu>=1.7.2
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 

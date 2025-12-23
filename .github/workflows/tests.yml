@@ -12,12 +12,14 @@ on:
 
 jobs:
   # Quick unit tests (fast, no external dependencies)
+  # These run in parallel with Docker tests for speed, but Docker is the source of truth
   unit-tests:
-    name: Unit Tests
+    name: Unit Tests (Fast Feedback)
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.9', '3.10', '3.11']
+      fail-fast: true  # Fail fast on first error in matrix
     
     steps:
     - uses: actions/checkout@v3
@@ -32,8 +34,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pytest pytest-cov pytest-mock
-        # Install faiss-cpu for CI (no GPU available)
-        pip install faiss-cpu>=1.7.2 || true
+        # Install project dependencies (faiss-cpu is already in requirements.txt)
         pip install -r requirements.txt
     
     - name: Run unit tests
@@ -53,7 +54,7 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: unit-tests
+    needs: [unit-tests, docker-tests]  # Wait for both unit and Docker tests
     
     steps:
     - uses: actions/checkout@v3
@@ -68,6 +69,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pytest pytest-cov pytest-mock
+        # Install project dependencies (faiss-cpu is already in requirements.txt)
         pip install -r requirements.txt
     
     - name: Run integration tests
@@ -88,7 +90,7 @@ jobs:
   rag-tests:
     name: RAG Tests
     runs-on: ubuntu-latest
-    needs: unit-tests
+    needs: [unit-tests, docker-tests]  # Wait for both unit and Docker tests
     
     steps:
     - uses: actions/checkout@v3
@@ -103,6 +105,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pytest pytest-cov
+        # Install project dependencies (faiss-cpu is already in requirements.txt)
         pip install -r requirements.txt
     
     - name: Run RAG tests
@@ -118,11 +121,12 @@ jobs:
         flags: rag
         name: rag-tests
 
-  # Docker tests (if Docker is available)
+  # Docker tests - Primary test environment (mirrors production)
   docker-tests:
-    name: Docker Tests
+    name: Docker Tests (Production-like)
     runs-on: ubuntu-latest
-    needs: unit-tests
+    # Run Docker tests first to fail fast on production-like environment
+    # Other tests can run in parallel for speed, but Docker is the source of truth
     
     steps:
     - uses: actions/checkout@v3
@@ -133,11 +137,19 @@ jobs:
     - name: Build Docker image
       run: |
         docker build -t lai-nux-tool:test .
+      # Fail fast if image build fails
     
-    - name: Run Docker tests
+    - name: Run all tests in Docker (production-like environment)
       run: |
-        docker run --rm lai-nux-tool:test python -m pytest src/ -m unit -v
-      continue-on-error: true
+        docker run --rm lai-nux-tool:test python -m pytest src/ -v --cov=src --cov-report=xml --cov-report=term-missing
+      # Removed continue-on-error to fail fast
+    
+    - name: Upload Docker test coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: docker
+        name: docker-tests
 
   # Lint and format checks
   lint:
@@ -174,7 +186,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, rag-tests]
+    needs: [unit-tests, integration-tests, rag-tests, docker-tests]
     if: always()
     
     steps:
@@ -183,6 +195,7 @@ jobs:
         echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "✅ Unit tests: ${{ needs.unit-tests.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Docker tests (production-like): ${{ needs.docker-tests.result }}" >> $GITHUB_STEP_SUMMARY
         echo "✅ Integration tests: ${{ needs.integration-tests.result }}" >> $GITHUB_STEP_SUMMARY
         echo "✅ RAG tests: ${{ needs.rag-tests.result }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
