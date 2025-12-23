@@ -5,7 +5,7 @@ Provides intelligent transformation and completion of partial commands
 
 import re
 import subprocess
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 import platform
 
@@ -82,7 +82,7 @@ class ShiftTabCompletion:
         
         return scored_completions[:5]  # Return top 5 completions
     
-    def _analyze_input(self, input_text: str) -> Dict[str, any]:
+    def _analyze_input(self, input_text: str) -> Dict[str, Any]:
         """Analyze the input to understand what the user is trying to do."""
         
         analysis = {
@@ -353,7 +353,7 @@ Completions:"""
             if len(self.completion_history) > 50:
                 self.completion_history = self.completion_history[-50:]
     
-    def get_completion_stats(self) -> Dict[str, any]:
+    def get_completion_stats(self) -> Dict[str, Any]:
         """Get statistics about completion usage."""
         
         return {

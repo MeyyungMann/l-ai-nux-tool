@@ -11,12 +11,10 @@ from typing import Optional, Dict, Any, List
 from transformers import (
     AutoTokenizer, 
     AutoModelForCausalLM, 
-    BitsAndBytesConfig,
     pipeline
 )
 # from peft import PeftModel  # Not using LoRA in this project
 import openai
-from huggingface_hub import hf_hub_download
 from pathlib import Path
 
 from .config import Config
@@ -157,72 +155,6 @@ class LLMEngine:
         except Exception as e:
             print(f"⚠️  Failed to clear corrupted cache: {e}")
     
-    def _auto_save_quantized_cache(self, model_name: str):
-        """Automatically save quantized cache after first successful load."""
-        try:
-            # Check if we're on CUDA (quantization only works on GPU)
-            if self.device != 'cuda':
-                return
-            
-            # Check if quantized cache already exists
-            quantized_cache_dir = Path("./quantized_model_cache")
-            if (quantized_cache_dir / "config.json").exists():
-                # Cache already exists, nothing to do
-                return
-            
-            # Check if we've already attempted auto-save (marker file)
-            marker_file = self.cache_dir / '.quantized_auto_save_attempted'
-            if marker_file.exists():
-                # Already tried, don't spam user
-                return
-            
-            # Create marker file to indicate we're attempting this
-            marker_file.touch()
-            
-            # Check if auto-save is enabled (default: yes)
-            auto_save = self.config.get('auto_save_quantized', True)
-            if not auto_save:
-                return
-            
-            print()
-            print("="*70)
-            print("🚀 AUTO-SAVING QUANTIZED CACHE")
-            print("="*70)
-            print()
-            print("📌 First successful model load detected!")
-            print("💡 Saving quantized cache for faster future startups...")
-            print("⏱️  This takes 3-5 minutes but only happens once.")
-            print()
-            print("💾 Benefits: Faster loading, consistent 4-bit quantization")
-            print("🎯 To disable: Set 'auto_save_quantized: false' in config")
-            print()
-            
-            # Import and run the save function
-            from save_quantized_model import save_quantized_model_auto
-            
-            # Save in foreground (user sees progress)
-            success = save_quantized_model_auto(model_name, quantized_cache_dir)
-            
-            if success:
-                print()
-                print("="*70)
-                print("✅ QUANTIZED CACHE SAVED SUCCESSFULLY!")
-                print("="*70)
-                print("🚀 Next startup will be faster!")
-                print()
-            else:
-                print()
-                print("⚠️  Quantized cache save failed - will retry next time")
-                print("💡 You can manually run: python save_quantized_model.py")
-                print()
-                # Remove marker so we try again next time
-                if marker_file.exists():
-                    marker_file.unlink()
-                    
-        except Exception as e:
-            print(f"⚠️  Auto-save quantized cache failed: {e}")
-            print("💡 You can manually run: python save_quantized_model.py")
-            # Don't crash, just continue
     
     def _save_model_to_cache(self):
         """Save the loaded model to cache for faster loading."""
@@ -354,29 +286,13 @@ class LLMEngine:
             model_config = self.config.model_config
             base_model_name = model_config.get('base_model', 'mistralai/Mixtral-8x7B-Instruct-v0.1')
             
-            if self.device == 'cuda':
-                # Use 4-bit quantization for RTX 5090 (faster loading, reliable saving)
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                    llm_int8_enable_fp32_cpu_offload=True  # Enable for Docker compatibility
-                )
-                
-                # Load from HuggingFace cache only (faster)
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    base_model_name,
-                    quantization_config=quantization_config,
-                    device_map="auto",
-                    local_files_only=True  # Use HF cache, don't download
-                )
-            else:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    base_model_name,
-                    dtype=torch.float32,
-                    local_files_only=True  # Use HF cache, don't download
-                )
+            # Load from HuggingFace cache only (faster)
+            # Note: This method is legacy and not used in online/ollama modes
+            self.model = AutoModelForCausalLM.from_pretrained(
+                base_model_name,
+                dtype=torch.float16 if self.device == 'cuda' else torch.float32,
+                local_files_only=True  # Use HF cache, don't download
+            )
             
             # Restore trained weights from our cache
             print("🔄 Restoring trained weights from cache...")
@@ -431,29 +347,13 @@ class LLMEngine:
             # Use HuggingFace cache directory for faster loading
             cache_dir = Path.home() / '.cache' / 'huggingface'
             
-            if self.device == 'cuda':
-                # Use 4-bit quantization for RTX 5090 (faster loading, reliable saving)
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                    llm_int8_enable_fp32_cpu_offload=True  # Enable for Docker compatibility
-                )
-                
-                # Load from HuggingFace cache (much faster)
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    base_model_name,
-                    quantization_config=quantization_config,
-                    device_map="auto",
-                    local_files_only=True  # Only use cached files
-                )
-            else:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    base_model_name,
-                    dtype=torch.float32,
-                    local_files_only=True
-                )
+            # Load from HuggingFace cache (much faster)
+            # Note: This method is legacy and not used in online/ollama modes
+            self.model = AutoModelForCausalLM.from_pretrained(
+                base_model_name,
+                dtype=torch.float16 if self.device == 'cuda' else torch.float32,
+                local_files_only=True  # Only use cached files
+            )
             
             # Apply cached model state
             print("🔄 Applying cached model state...")
@@ -486,142 +386,6 @@ class LLMEngine:
             print("🔄 Falling back to normal loading...")
             return False
     
-    def _setup_online_client(self):
-            
-            # Check for pre-quantized model cache first (FASTEST option!)
-            quantized_cache_dir = Path("./quantized_model_cache")
-            single_file_cache_dir = Path("./quantized_model_cache_single")
-            
-            # Skip single-file cache and go directly to 5-shard cache
-            print("🚀 Loading directly from 5-shard quantized model cache...")
-            
-            # Load from 5-shard cache (current working method)
-            if quantized_cache_dir.exists() and (quantized_cache_dir / "config.json").exists():
-                print("🚀 Found pre-quantized model cache!")
-                print(f"📍 Loading from: {quantized_cache_dir.absolute()}")
-                
-                try:
-                    # Load tokenizer from quantized cache
-                    self.tokenizer = AutoTokenizer.from_pretrained(quantized_cache_dir)
-                    if self.tokenizer.pad_token is None:
-                        self.tokenizer.pad_token = self.tokenizer.eos_token
-                    
-                    # Load pre-quantized model with proper quantization config
-                    from transformers import BitsAndBytesConfig
-                    
-                    # Configure 4-bit quantization for loading
-                    bnb_config = BitsAndBytesConfig(
-                        load_in_4bit=True,
-                        bnb_4bit_quant_type="nf4",
-                        bnb_4bit_compute_dtype=torch.float16,
-                        bnb_4bit_use_double_quant=True,
-                    )
-                    
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        quantized_cache_dir,
-                        quantization_config=bnb_config,
-                        device_map="auto",
-                        trust_remote_code=True,
-                        low_cpu_mem_usage=True,
-                    )
-                    
-                    print("✅ Pre-quantized model loaded successfully!")
-                    print("🎯 Ready for command generation!")
-                    
-                    # Create pipeline
-                    pipeline_kwargs = {
-                        "task": "text-generation",
-                        "model": self.model,
-                        "tokenizer": self.tokenizer,
-                        "max_length": model_config.get('max_length', 512),
-                        "temperature": model_config.get('temperature', 0.1),
-                        "top_p": model_config.get('top_p', 0.9),
-                        "do_sample": True,
-                        "pad_token_id": self.tokenizer.eos_token_id
-                    }
-                    
-                    self.pipeline = pipeline(**pipeline_kwargs)
-                    print(f"💡 Model: Pre-quantized {base_model_name}")
-                    
-                    # Single-file cache creation disabled - using 5-shard cache directly
-                    
-                    return  # Early return - we're done!
-                    
-                except Exception as e:
-                    print(f"⚠️  Failed to load pre-quantized cache: {e}")
-                    print("🔄 Falling back to normal loading...")
-            else:
-                print("ℹ️  No pre-quantized model found")
-                print(f"💡 TIP: Run 'python save_quantized_model.py' once to save a pre-quantized model")
-                print(f"📂 This will create cache in: {quantized_cache_dir.absolute()}")
-                print("⚡ Next time it will load 4x faster!")
-                print()
-            
-            # Normal loading path (if no quantized cache or it failed)
-            # Using base model only - no LoRA weights
-            
-            print(f"Loading model: {base_model_name}")
-            print("Using 4-bit quantization for faster loading and reliable caching")
-            
-            # Load tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(base_model_name)
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            
-            # Load base model
-            if self.device == 'cuda':
-                print("🔧 Configuring 4-bit quantization for GPU...")
-                # Use 4-bit quantization for RTX 5090 (faster loading, reliable saving)
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                    llm_int8_enable_fp32_cpu_offload=True  # Enable for Docker compatibility
-                )
-                
-                print("📦 Loading model with quantization...")
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    base_model_name,
-                    quantization_config=quantization_config,
-                    device_map="auto"
-                )
-                print("✅ Model loaded with 4-bit quantization on GPU")
-            else:
-                print("📦 Loading model on CPU (no quantization)...")
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    base_model_name,
-                    dtype=torch.float32
-                )
-                print("✅ Model loaded on CPU")
-            
-            # Using base model only (no LoRA weights)
-            
-            # Create pipeline with conditional device argument
-            pipeline_kwargs = {
-                "task": "text-generation",
-                "model": self.model,
-                "tokenizer": self.tokenizer,
-                "max_length": model_config.get('max_length', 512),
-                "temperature": model_config.get('temperature', 0.1),
-                "top_p": model_config.get('top_p', 0.9),
-                "do_sample": True,
-                "pad_token_id": self.tokenizer.eos_token_id
-            }
-            
-            # Only add device if not using device_map="auto" (which conflicts with explicit device)
-            if self.device != 'cuda' or not model_config.get('use_4bit', False):
-                pipeline_kwargs['device'] = self.device
-            
-            self.pipeline = pipeline(**pipeline_kwargs)
-            
-            print(f"Offline model loaded successfully on {self.device}")
-            print(f"🎯 Ready for command generation!")
-            print(f"💡 Model: {base_model_name}")
-            print(f"🔧 Quantization: {'4-bit (GPU)' if self.device == 'cuda' else 'None (CPU)'}")
-            
-            # Save model to cache for faster loading next time
-            self._save_model_to_cache()
     def _setup_online_client(self):
         """Setup OpenAI-compatible client for online inference."""
         api_config = self.config.api_config
@@ -688,9 +452,10 @@ class LLMEngine:
     def _setup_rag_engine(self):
         """Setup RAG engine for retrieval-augmented generation."""
         try:
-            from .rag_engine import get_rag_engine
+            from .rag_engine import RAGEngine
             print("🔍 Initializing RAG system...")
-            self.rag_engine = get_rag_engine()
+            rag_config = self.config.rag_config
+            self.rag_engine = RAGEngine(config=rag_config)
             print("✅ RAG system initialized")
             
             # Print stats
@@ -981,14 +746,15 @@ class LLMEngine:
         prompt = self._create_prompt(description)
         
         try:
+            ollama_config = self.config.ollama_config
             payload = {
                 "model": self.ollama_model,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,
-                    "top_p": 0.9,
-                    "max_tokens": 100
+                    "temperature": ollama_config.get('temperature', 0.1),
+                    "top_p": ollama_config.get('top_p', 0.9),
+                    "max_tokens": ollama_config.get('max_tokens', 150)
                 }
             }
             
@@ -1028,14 +794,15 @@ class LLMEngine:
         prompt = self._create_rag_prompt(description, cleaned_context)
         
         try:
+            ollama_config = self.config.ollama_config
             payload = {
                 "model": self.ollama_model,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,
-                    "top_p": 0.9,
-                    "max_tokens": 150
+                    "temperature": ollama_config.get('temperature', 0.1),
+                    "top_p": ollama_config.get('top_p', 0.9),
+                    "max_tokens": ollama_config.get('max_tokens', 150)
                 }
             }
             

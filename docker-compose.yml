@@ -20,10 +20,6 @@ services:
       TORCH_CUDA_ARCH_LIST: "8.9"  # RTX 5090 architecture
       PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
     volumes:
-      # Mount model cache to persist downloaded models
-      - ./model_cache:/root/.cache/huggingface
-      # Mount quantized model cache for faster loading
-      - ./quantized_model_cache:/app/quantized_model_cache
       # Mount current directory for development
       - .:/app
       # Mount home directory for configuration
@@ -57,42 +53,9 @@ services:
       HF_HUB_DISABLE_SYMLINKS_WARNING: 1
       HF_HUB_DISABLE_TELEMETRY: 1
     volumes:
-      - ./model_cache:/root/.cache/huggingface
-      - ./quantized_model_cache:/app/quantized_model_cache
       - .:/app
     shm_size: 8g
     command: test
-
-  # LoRA Training service
-  lai-nux-tool-train:
-    build: 
-      context: .
-      args:
-        - HF_HUB_DISABLE_SYMLINKS_WARNING=1
-        - HF_HUB_DISABLE_TELEMETRY=1
-    image: lai-nux-tool:latest
-    container_name: lai-nux-tool-train
-    runtime: nvidia
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      HF_HUB_DISABLE_SYMLINKS_WARNING: 1
-      HF_HUB_DISABLE_TELEMETRY: 1
-      TORCH_CUDA_ARCH_LIST: "8.9"
-      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
-    volumes:
-      - ./model_cache:/root/.cache/huggingface
-      - ./quantized_model_cache:/app/quantized_model_cache
-      - ./lora_outputs:/app/lora_outputs
-      - .:/app
-    shm_size: 16g
-    deploy:
-      resources:
-        limits:
-          memory: 24G
-        reservations:
-          memory: 8G
-    command: python docker_lora_training.py
 
   # Shell access for debugging
   lai-nux-tool-shell:
@@ -110,8 +73,6 @@ services:
       HF_HUB_DISABLE_SYMLINKS_WARNING: 1
       HF_HUB_DISABLE_TELEMETRY: 1
     volumes:
-      - ./model_cache:/root/.cache/huggingface
-      - ./quantized_model_cache:/app/quantized_model_cache
       - .:/app
     shm_size: 8g
     command: bash
@@ -138,9 +99,6 @@ services:
       TRANSFORMERS_VERBOSITY: error  # Suppress deprecation warnings
       OPENAI_API_KEY: ${OPENAI_API_KEY}  # Pass API key from .env for online fallback
     volumes:
-      # Mount model cache
-      - ./model_cache:/root/.cache/huggingface
-      - ./quantized_model_cache:/app/quantized_model_cache
       # Mount RAG cache directories (shared with host)
       - ./rag_cache:/root/.lai-nux-tool/rag_cache
       - ./doc_cache:/root/.lai-nux-tool/doc_cache
@@ -178,8 +136,6 @@ services:
       TORCH_CUDA_ARCH_LIST: "8.9"
       PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
     volumes:
-      - ./model_cache:/root/.cache/huggingface
-      - ./quantized_model_cache:/app/quantized_model_cache
       - ./rag_cache:/root/.lai-nux-tool/rag_cache
       - ./doc_cache:/root/.lai-nux-tool/doc_cache
       - .:/app
@@ -194,70 +150,6 @@ services:
         reservations:
           memory: 8G
     command: ["python", "gen_cmd.py", "--mode", "compare", "--interactive"]
-
-  # 50-Query Test Suite - Comprehensive online mode testing
-  # Usage: docker-compose run --rm lai-nux-tool-test-50
-  lai-nux-tool-test-50:
-    build:
-      context: .
-      args:
-        - HF_HUB_DISABLE_SYMLINKS_WARNING=1
-        - HF_HUB_DISABLE_TELEMETRY=1
-    image: lai-nux-tool:latest
-    container_name: lai-nux-tool-test-50
-    runtime: nvidia
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      HF_HUB_DISABLE_SYMLINKS_WARNING: 1
-      HF_HUB_DISABLE_TELEMETRY: 1
-      TRANSFORMERS_VERBOSITY: error
-      PYTHONUNBUFFERED: 1
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-    volumes:
-      - ./model_cache:/root/.cache/huggingface
-      - ./quantized_model_cache:/app/quantized_model_cache
-      - ./rag_cache:/root/.lai-nux-tool/rag_cache
-      - ./doc_cache:/root/.lai-nux-tool/doc_cache
-      - .:/app
-    shm_size: 8g
-    command: python test_50_queries_online.py
-    profiles: ["manual"]
-
-  # 50-Query Test Suite - Comprehensive offline mode testing
-  # Usage: docker-compose run --rm lai-nux-tool-test-50-offline
-  lai-nux-tool-test-50-offline:
-    build:
-      context: .
-      args:
-        - HF_HUB_DISABLE_SYMLINKS_WARNING=1
-        - HF_HUB_DISABLE_TELEMETRY=1
-    image: lai-nux-tool:latest
-    container_name: lai-nux-tool-test-50-offline
-    runtime: nvidia
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      HF_HUB_DISABLE_SYMLINKS_WARNING: 1
-      HF_HUB_DISABLE_TELEMETRY: 1
-      TRANSFORMERS_VERBOSITY: error
-      PYTHONUNBUFFERED: 1
-      TOKENIZERS_PARALLELISM: "false"
-    volumes:
-      - ./model_cache:/root/.cache/huggingface
-      - ./quantized_model_cache:/app/quantized_model_cache
-      - ./rag_cache:/root/.lai-nux-tool/rag_cache
-      - ./doc_cache:/root/.lai-nux-tool/doc_cache
-      - .:/app
-    shm_size: 16g
-    deploy:
-      resources:
-        limits:
-          memory: 24G
-        reservations:
-          memory: 8G
-    command: python test_50_queries_offline.py
-    profiles: ["manual"]
 
   # Ollama Mode - GPT-OSS model via Ollama
   # Usage: docker-compose run --rm lai-nux-tool-ollama

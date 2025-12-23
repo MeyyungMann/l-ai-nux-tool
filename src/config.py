@@ -65,9 +65,20 @@ class Config:
         'ollama': {
             'base_url': 'http://host.docker.internal:11434',
             'model': 'gpt-oss:20b',
-            'timeout': 120
+            'timeout': 120,
+            'temperature': 0.1,
+            'top_p': 0.9,
+            'max_tokens': 150
         },
-            'auto_save_quantized': True  # Auto-save quantized cache after first run
+        'rag': {
+            'embedding_model': 'all-MiniLM-L6-v2',
+            'top_k_retrieval': 5,  # Number of docs to retrieve
+            'top_k_context': 3,    # Number of docs in context
+            'query_cache_size': 100,  # Max cached queries
+            'max_examples_per_doc': 2,  # Limit examples in context
+            'max_options_per_doc': 3,   # Limit options in context
+            'max_options_in_text': 5    # Limit options when creating doc text
+        },
         }
         
         self.save_config(default_config)
@@ -136,5 +147,10 @@ class Config:
     def ollama_config(self) -> Dict[str, Any]:
         """Get Ollama configuration."""
         return self.get('ollama', {})
+    
+    @property
+    def rag_config(self) -> Dict[str, Any]:
+        """Get RAG configuration."""
+        return self.get('rag', {})
 
 

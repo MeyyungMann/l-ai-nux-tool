@@ -28,10 +28,25 @@ logger = logging.getLogger(__name__)
 class RAGEngine:
     """RAG Engine for document retrieval and augmented generation."""
     
-    def __init__(self, cache_dir: Optional[Path] = None):
-        """Initialize the RAG engine."""
+    def __init__(self, cache_dir: Optional[Path] = None, config: Optional[Dict[str, Any]] = None):
+        """Initialize the RAG engine.
+        
+        Args:
+            cache_dir: Directory for RAG cache files
+            config: Configuration dictionary with RAG settings
+        """
         self.cache_dir = cache_dir or Path.home() / '.lai-nux-tool' / 'rag_cache'
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Load configuration (defaults if not provided)
+        self.config = config or {}
+        self.embedding_model = self.config.get('embedding_model', 'all-MiniLM-L6-v2')
+        self.top_k_retrieval = self.config.get('top_k_retrieval', 5)
+        self.top_k_context = self.config.get('top_k_context', 3)
+        self.query_cache_size = self.config.get('query_cache_size', 100)
+        self.max_examples_per_doc = self.config.get('max_examples_per_doc', 2)
+        self.max_options_per_doc = self.config.get('max_options_per_doc', 3)
+        self.max_options_in_text = self.config.get('max_options_in_text', 5)
         
         # Initialize components
         self.embedder = None
@@ -74,8 +89,8 @@ class RAGEngine:
         logger.info("Initializing RAG system...")
         
         # Load embedding model
-        logger.info("Loading embedding model...")
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        logger.info(f"Loading embedding model: {self.embedding_model}...")
+        self.embedder = SentenceTransformer(self.embedding_model)
         logger.info("Embedding model loaded")
         
         # Collect documents
@@ -121,7 +136,7 @@ class RAGEngine:
             # Add options
             if doc.options:
                 text_parts.append("Options:")
-                for opt, desc in list(doc.options.items())[:5]:  # Limit options
+                for opt, desc in list(doc.options.items())[:self.max_options_in_text]:
                     text_parts.append(f"{opt}: {desc}")
             
             # Combine into single text
@@ -146,7 +161,15 @@ class RAGEngine:
         self.index.add(embeddings.astype('float32'))
         logger.info(f"Created FAISS index with {self.index.ntotal} vectors")
     
-    def retrieve_relevant_docs(self, query: str, top_k: int = 5) -> List[Tuple[CommandDoc, float]]:
+    def retrieve_relevant_docs(self, query: str, top_k: Optional[int] = None) -> List[Tuple[CommandDoc, float]]:
+        """Retrieve relevant documents for a query.
+        
+        Args:
+            query: Search query
+            top_k: Number of documents to retrieve (defaults to config value)
+        """
+        if top_k is None:
+            top_k = self.top_k_retrieval
         """Retrieve relevant documents for a query."""
         if not self.embedder or not self.index:
             logger.warning("RAG system not initialized")
@@ -173,7 +196,15 @@ class RAGEngine:
             logger.error(f"Error retrieving documents: {e}")
             return []
     
-    def get_context_for_query(self, query: str, top_k: int = 3) -> str:
+    def get_context_for_query(self, query: str, top_k: Optional[int] = None) -> str:
+        """Get formatted context for a query to augment generation with caching.
+        
+        Args:
+            query: User query
+            top_k: Number of documents to include (defaults to config value)
+        """
+        if top_k is None:
+            top_k = self.top_k_context
         """Get formatted context for a query to augment generation with caching."""
         # Improve query processing for better context matching
         processed_query = self._improve_query_for_context(query)
@@ -209,12 +240,12 @@ class RAGEngine:
             
             if doc.examples:
                 context_parts.append("Examples:")
-                for example in doc.examples[:2]:  # Limit examples
+                for example in doc.examples[:self.max_examples_per_doc]:
                     context_parts.append(f"  - {example}")
             
             if doc.options:
                 context_parts.append("Common options:")
-                for opt, desc in list(doc.options.items())[:3]:  # Limit options
+                for opt, desc in list(doc.options.items())[:self.max_options_per_doc]:
                     context_parts.append(f"  {opt}: {desc}")
         
         context = "\n".join(context_parts)
@@ -261,7 +292,16 @@ class RAGEngine:
         
         return improved_query
 
-    def store_context_for_query(self, query: str, context: str, top_k: int = 3) -> None:
+    def store_context_for_query(self, query: str, context: str, top_k: Optional[int] = None) -> None:
+        """Store a provided context string into the query cache for this query.
+        
+        Args:
+            query: User query
+            context: Context string to cache
+            top_k: Top-k value for cache key (defaults to config value)
+        """
+        if top_k is None:
+            top_k = self.top_k_context
         """Store a provided context string into the query cache for this query.
 
         This lets external components (e.g., online fallback) seed the RAG
@@ -281,7 +321,7 @@ This command was successfully used and verified to work for similar requests."""
             self._save_query_cache()
             
             # Also store with different top_k values for better matching
-            for k in [1, 2, 3, 4, 5]:
+            for k in range(1, self.top_k_retrieval + 1):
                 alt_key = self._normalize_query(query.lower()) + f"_k{k}"
                 self.query_cache[alt_key] = formatted_context
             
@@ -290,7 +330,15 @@ This command was successfully used and verified to work for similar requests."""
         except Exception as e:
             logger.warning(f"Failed to store context for query: {e}")
     
-    def search_commands(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_commands(self, query: str, top_k: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Search for relevant commands and return structured results.
+        
+        Args:
+            query: Search query
+            top_k: Number of results (defaults to config value)
+        """
+        if top_k is None:
+            top_k = self.top_k_retrieval
         """Search for relevant commands and return structured results."""
         relevant_docs = self.retrieve_relevant_docs(query, top_k)
         
@@ -299,7 +347,7 @@ This command was successfully used and verified to work for similar requests."""
             results.append({
                 'command': doc.command,
                 'description': doc.description,
-                'examples': doc.examples[:3],
+                'examples': doc.examples[:self.max_examples_per_doc],
                 'category': doc.category,
                 'relevance_score': score,
             })
@@ -312,7 +360,7 @@ This command was successfully used and verified to work for similar requests."""
             cache_data = {
                 'documents': self.documents,
                 'doc_texts': self.doc_texts,
-                'embedder_name': 'all-MiniLM-L6-v2',
+                'embedder_name': self.embedding_model,
             }
             
             # Save main cache data
@@ -347,7 +395,7 @@ This command was successfully used and verified to work for similar requests."""
             self.doc_texts = cache_data['doc_texts']
             
             # Load embedder
-            embedder_name = cache_data.get('embedder_name', 'all-MiniLM-L6-v2')
+            embedder_name = cache_data.get('embedder_name', self.embedding_model)
             self.embedder = SentenceTransformer(embedder_name)
             
             # Load FAISS index
@@ -382,7 +430,7 @@ This command was successfully used and verified to work for similar requests."""
         return {
             'total_documents': len(self.documents),
             'indexed_vectors': self.index.ntotal if self.index else 0,
-            'embedder_model': 'all-MiniLM-L6-v2',
+            'embedder_model': self.embedding_model,
             'cache_dir': str(self.cache_dir),
             'is_initialized': self.embedder is not None and self.index is not None,
             'cached_queries': len(self.query_cache),
@@ -551,10 +599,10 @@ This command was successfully used and verified to work for similar requests."""
     def _save_query_cache(self):
         """Save query cache to disk (with size limit)."""
         try:
-            # Limit cache size to 100 most recent queries
-            if len(self.query_cache) > 100:
-                # Keep only 100 most recent
-                self.query_cache = dict(list(self.query_cache.items())[-100:])
+            # Limit cache size to configured maximum
+            if len(self.query_cache) > self.query_cache_size:
+                # Keep only most recent queries
+                self.query_cache = dict(list(self.query_cache.items())[-self.query_cache_size:])
             
             with open(self.query_cache_file, 'wb') as f:
                 pickle.dump(self.query_cache, f)
@@ -581,11 +629,15 @@ This command was successfully used and verified to work for similar requests."""
 _rag_engine = None
 
 
-def get_rag_engine() -> RAGEngine:
-    """Get or create the global RAG engine instance."""
+def get_rag_engine(config: Optional[Dict[str, Any]] = None) -> RAGEngine:
+    """Get or create the global RAG engine instance.
+    
+    Args:
+        config: Optional configuration dictionary
+    """
     global _rag_engine
     if _rag_engine is None:
-        _rag_engine = RAGEngine()
+        _rag_engine = RAGEngine(config=config)
     return _rag_engine
 
 

@@ -30,7 +30,6 @@ load_dotenv()
 from src.llm_engine import LLMEngine
 from src.command_parser import CommandParser
 from src.config import Config
-from src.windows_compatibility import WindowsCompatibility
 from src.shift_tab import ShiftTabCompletion
 from src.enhanced_safety import EnhancedSafetySystem
 
@@ -160,7 +159,7 @@ def show_mode_help():
         "• Uses Mixtral-8x7B-Instruct with 4-bit quantization\n"
         "• Optimized for GPU with automatic CPU fallback\n"
         "• First run downloads ~15GB model (one-time)\n"
-        "• Subsequent runs use cached quantized model (~3GB)\n"
+        "• Uses local models from HuggingFace cache\n"
         "• Best for: Regular use, privacy, cost savings\n\n"
         "🌐 ONLINE MODE:\n"
         "• Uses OpenAI-compatible API (GPT-5-mini by default)\n"
@@ -237,9 +236,6 @@ def gen_cmd(description, mode, online, api_key, base_url, interactive, show_rag_
     
     # Set the mode in config
     config.set('mode', selected_mode)
-    
-    # Initialize Windows compatibility layer
-    windows_compat = WindowsCompatibility()
     
     # Initialize LLM engine
     llm_engine = LLMEngine(config)
@@ -402,10 +398,10 @@ def generate_command(description, llm_engine, command_parser, shift_tab_completi
             if any(word in parsed_command.lower() for word in ['find /', 'find .', 'du -', 'df -', 'ps aux']):
                 console.print("[dim]⏱️  This command might take a while. Press Ctrl+C to cancel if needed.[/dim]")
             
-            # Use Windows compatibility layer for execution
-            from src.windows_compatibility import WindowsCompatibility
-            windows_compat = WindowsCompatibility()
-            stdout, stderr, returncode = windows_compat.execute_command(parsed_command)
+            # Execute command directly (Docker/Linux environment)
+            import subprocess
+            result = subprocess.run(parsed_command, shell=True, capture_output=True, text=True)
+            stdout, stderr, returncode = result.stdout, result.stderr, result.returncode
             
             if returncode == 0:
                 console.print("[green]Command executed successfully![/green]")
@@ -439,7 +435,9 @@ def generate_command(description, llm_engine, command_parser, shift_tab_completi
                                 ))
                                 
                                 if click.confirm("Execute this online-generated command?"):
-                                    stdout2, stderr2, returncode2 = windows_compat.execute_command(repaired)
+                                    import subprocess
+                                    result2 = subprocess.run(repaired, shell=True, capture_output=True, text=True)
+                                    stdout2, stderr2, returncode2 = result2.stdout, result2.stderr, result2.returncode
                                     
                                     if returncode2 == 0:
                                         console.print("[green]✅ Online command executed successfully![/green]")

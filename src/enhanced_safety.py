@@ -5,7 +5,7 @@ Provides comprehensive safety checks and warnings
 
 import re
 import subprocess
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 import platform
 
@@ -63,7 +63,7 @@ class EnhancedSafetySystem:
             'mount', 'umount', 'mkfs', 'fdisk', 'dd', 'parted'
         ]
     
-    def validate_command_safety(self, command: str) -> Tuple[bool, str, Dict[str, any]]:
+    def validate_command_safety(self, command: str) -> Tuple[bool, str, Dict[str, Any]]:
         """Validate command safety and return detailed analysis."""
         
         analysis = {
@@ -128,7 +128,7 @@ class EnhancedSafetySystem:
         
         return command.strip()
     
-    def _check_command_specific_safety(self, command: str) -> Dict[str, any]:
+    def _check_command_specific_safety(self, command: str) -> Dict[str, Any]:
         """Check safety for specific command types."""
         
         safety = {
@@ -160,7 +160,7 @@ class EnhancedSafetySystem:
         
         return safety
     
-    def _check_rm_safety(self, command: str, words: List[str]) -> Dict[str, any]:
+    def _check_rm_safety(self, command: str, words: List[str]) -> Dict[str, Any]:
         """Check safety of rm commands."""
         
         safety = {
@@ -195,7 +195,7 @@ class EnhancedSafetySystem:
         
         return safety
     
-    def _check_chmod_safety(self, command: str, words: List[str]) -> Dict[str, any]:
+    def _check_chmod_safety(self, command: str, words: List[str]) -> Dict[str, Any]:
         """Check safety of chmod commands."""
         
         safety = {
@@ -217,7 +217,7 @@ class EnhancedSafetySystem:
         
         return safety
     
-    def _check_chown_safety(self, command: str, words: List[str]) -> Dict[str, any]:
+    def _check_chown_safety(self, command: str, words: List[str]) -> Dict[str, Any]:
         """Check safety of chown commands."""
         
         safety = {
@@ -235,7 +235,7 @@ class EnhancedSafetySystem:
         
         return safety
     
-    def _check_sudo_safety(self, command: str, words: List[str]) -> Dict[str, any]:
+    def _check_sudo_safety(self, command: str, words: List[str]) -> Dict[str, Any]:
         """Check safety of sudo commands."""
         
         safety = {
@@ -259,7 +259,7 @@ class EnhancedSafetySystem:
         
         return safety
     
-    def _check_dd_safety(self, command: str, words: List[str]) -> Dict[str, any]:
+    def _check_dd_safety(self, command: str, words: List[str]) -> Dict[str, Any]:
         """Check safety of dd commands."""
         
         safety = {
@@ -274,7 +274,7 @@ class EnhancedSafetySystem:
         
         return safety
     
-    def _check_mount_safety(self, command: str, words: List[str]) -> Dict[str, any]:
+    def _check_mount_safety(self, command: str, words: List[str]) -> Dict[str, Any]:
         """Check safety of mount commands."""
         
         safety = {
@@ -289,7 +289,7 @@ class EnhancedSafetySystem:
         
         return safety
     
-    def _generate_safety_suggestions(self, command: str, analysis: Dict[str, any]) -> List[str]:
+    def _generate_safety_suggestions(self, command: str, analysis: Dict[str, Any]) -> List[str]:
         """Generate safety suggestions based on analysis."""
         
         suggestions = []
@@ -319,7 +319,7 @@ class EnhancedSafetySystem:
         
         return suggestions
     
-    def _calculate_confidence(self, command: str, analysis: Dict[str, any]) -> int:
+    def _calculate_confidence(self, command: str, analysis: Dict[str, Any]) -> int:
         """Calculate confidence in the safety assessment."""
         
         confidence = 100
@@ -346,7 +346,7 @@ class EnhancedSafetySystem:
         
         return max(0, confidence)
     
-    def get_safety_report(self, command: str) -> Dict[str, any]:
+    def get_safety_report(self, command: str) -> Dict[str, Any]:
         """Generate a comprehensive safety report for a command."""
         
         is_safe, warning, analysis = self.validate_command_safety(command)
@@ -363,7 +363,7 @@ class EnhancedSafetySystem:
         
         return report
     
-    def _get_safety_recommendations(self, command: str, analysis: Dict[str, any]) -> List[str]:
+    def _get_safety_recommendations(self, command: str, analysis: Dict[str, Any]) -> List[str]:
         """Get safety recommendations for a command."""
         
         recommendations = []
@@ -412,7 +412,7 @@ class EnhancedSafetySystem:
         from datetime import datetime
         return datetime.now().isoformat()
     
-    def get_safety_stats(self) -> Dict[str, any]:
+    def get_safety_stats(self) -> Dict[str, Any]:
         """Get statistics about safety checks."""
         
         return {

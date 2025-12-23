@@ -76,7 +76,6 @@ tmp/
 # Project-specific cache directories
 doc_cache/
 rag_cache/
-quantized_model_cache/
 test_env/
 
 # Test files created during development

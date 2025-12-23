@@ -22,11 +22,11 @@ if [ "$1" = "interactive" ]; then
     echo ""
     python gen_cmd.py --interactive
 elif [ "$1" = "test" ]; then
-    echo "🧪 Running tests..."
-    python tests/test_suite.py
+    echo "🧪 Running automated tests..."
+    python -m pytest tests/ -v
 elif [ "$1" = "quick-test" ]; then
-    echo "⚡ Running quick tests..."
-    python tests/quick_test.py
+    echo "⚡ Running unit tests only..."
+    python -m pytest tests/ -m unit -v
 else
     echo "💡 Available commands:"
     echo "  docker run -it lai-nux-tool interactive  # Interactive mode"

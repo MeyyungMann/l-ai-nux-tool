@@ -28,10 +28,9 @@ if ! docker info | grep -q nvidia; then
     echo "   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"
 fi
 
-# Create model cache directory
+# Create cache directories
 echo "📁 Creating cache directories..."
-mkdir -p model_cache
-mkdir -p quantized_model_cache
+mkdir -p rag_cache doc_cache
 
 # Cache directories created
 echo "✅ Cache directories ready"
@@ -58,7 +57,7 @@ echo "  tests/    - Test files"
 echo "  src/      - Source code"
 echo ""
 echo "💡 Tips:"
-echo "  • First run will download CodeLlama-7B-Instruct (~7GB)"
-echo "  • Models are cached in ./model_cache directory"
+echo "  • First run will initialize RAG system (downloads embedding models)"
+echo "  • RAG cache is stored in ./rag_cache directory"
 echo "  • Use Ctrl+C to stop interactive mode"
 echo "  • GPU support requires nvidia-docker2"

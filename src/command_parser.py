@@ -6,7 +6,7 @@ Windows-compatible version that uses PowerShell and WSL when available.
 import subprocess
 import json
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 import platform
 
@@ -141,7 +141,7 @@ class CommandParser:
         
         return None
     
-    def extract_command_syntax(self, command: str) -> Dict[str, any]:
+    def extract_command_syntax(self, command: str) -> Dict[str, Any]:
         """Extract syntax information from man page."""
         cmd_name = command.split()[0]
         man_content = self.get_man_page(cmd_name)

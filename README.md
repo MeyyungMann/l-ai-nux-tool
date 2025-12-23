@@ -87,21 +87,12 @@ docker-compose run --rm lai-nux-tool
 ```bash
 # Lightweight testing service
 docker-compose run --rm lai-nux-tool-test
-
-# Comprehensive 50-query testing
-docker-compose run --rm lai-nux-tool-test-50
-
-# Offline testing (no API required)
-docker-compose run --rm lai-nux-tool-test-50-offline
 ```
 
 #### 🔧 Development Services
 ```bash
 # Shell access for debugging
 docker-compose run --rm lai-nux-tool-shell
-
-# Training service (for model fine-tuning)
-docker-compose run --rm lai-nux-tool-train
 ```
 
 ### Advanced Setup
@@ -116,20 +107,12 @@ This script will:
 - Download initial models
 - Configure the environment
 
-#### Testing
-```bash
-./sh_files/docker_test.sh
-```
-Run comprehensive tests to verify everything works correctly.
-
 #### Shell Scripts (Convenience Tools)
 The `sh_files/` directory contains helpful scripts:
 
 ```bash
 # Main workflow scripts
 ./sh_files/docker_setup.sh      # Initial Docker setup
-./sh_files/docker_test.sh       # Test Docker installation
-./sh_files/compare_modes.sh     # Compare all modes
 
 # Ollama setup (for open-source mode)
 ./sh_files/setup_ollama.sh      # Setup Ollama with GPT-OSS model
@@ -140,9 +123,8 @@ chmod +x sh_files/*.sh
 
 **Main Workflow:**
 1. **First Time:** `./sh_files/docker_setup.sh`
-2. **Test:** `./sh_files/docker_test.sh`
-3. **Run:** `docker-compose run --rm lai-nux-tool-rag --interactive`
-4. **Compare:** `./sh_files/compare_modes.sh`
+2. **Run:** `docker-compose run --rm lai-nux-tool-rag --interactive`
+3. **Test:** `docker-compose run --rm lai-nux-tool-test`
 
 #### Shell Access for Debugging
 ```bash
@@ -273,12 +255,8 @@ The Docker setup automatically detects and uses NVIDIA GPUs. For RTX 5090:
 
 7. **RAG Cache Issues:**
    ```bash
-   # Rebuild RAG cache
-   python src/utils/fetch_man_pages.py --auto
-   
-   # Clear corrupted cache
-   rm -rf rag_cache/* doc_cache/*
-   python src/utils/fetch_man_pages.py --auto
+   # Clear corrupted cache (RAG will rebuild automatically)
+   rm -rf ~/.lai-nux-tool/rag_cache/* ~/.lai-nux-tool/doc_cache/*
    ```
 
 #### Performance Tips
@@ -295,7 +273,7 @@ export DEBUG=1
 python gen_cmd.py --interactive
 
 # Or run tests to verify setup
-./sh_files/docker_test.sh
+pytest tests/ -m unit
 ```
 
 ### Manual Installation (Alternative)
@@ -318,8 +296,8 @@ If you prefer not to use Docker:
 
 3. **Setup RAG system (optional but recommended):**
    ```bash
-   # Build RAG cache with Linux documentation
-   python src/utils/fetch_man_pages.py --auto
+   # RAG cache is built automatically on first use
+   # No manual setup required
    ```
 
 4. **Run the tool:**
