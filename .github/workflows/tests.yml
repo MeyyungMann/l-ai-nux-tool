@@ -142,10 +142,10 @@ jobs:
         docker build -t lai-nux-tool:test .
       # Fail fast if image build fails
     
-    - name: Run all tests in Docker (production-like environment)
+    - name: Run unit tests in Docker (production-like environment)
       run: |
-        docker run --rm lai-nux-tool:test python -m pytest src/ -v --cov=src --cov-report=xml --cov-report=term-missing
-      # Removed continue-on-error to fail fast
+        docker run --rm lai-nux-tool:test python -m pytest src/ -m unit -v --cov=src --cov-report=xml --cov-report=term-missing
+      # Run only unit tests to avoid API/GPU dependencies in CI
     
     - name: Upload Docker test coverage
       uses: codecov/codecov-action@v3
