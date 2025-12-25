@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV CUDA_VISIBLE_DEVICES=0
 
-# Install system dependencies
+# Install system dependencies (minimal for CI)
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -15,20 +15,19 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     build-essential \
-    man-db \
-    manpages \
-    manpages-dev \
-    manpages-posix \
-    manpages-posix-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Install CUDA support (optional - will work with or without GPU)
-RUN apt-get update && apt-get install -y \
-    nvidia-cuda-toolkit \
-    && rm -rf /var/lib/apt/lists/* || echo "CUDA toolkit installation failed - continuing without GPU support"
+# Note: CUDA toolkit is large (~3GB), skip in CI to save space
+# For local GPU usage, uncomment or install separately
+# RUN apt-get update && apt-get install -y \
+#     nvidia-cuda-toolkit \
+#     && rm -rf /var/lib/apt/lists/* || echo "CUDA toolkit installation failed - continuing without GPU support"
 
-# Install Ollama
-RUN curl -fsSL https://ollama.ai/install.sh | sh || echo "Ollama installation failed - continuing without Ollama support"
+# Install Ollama (optional - skip in CI to save space)
+# For local usage, uncomment or install separately
+# RUN curl -fsSL https://ollama.ai/install.sh | sh || echo "Ollama installation failed - continuing without Ollama support"
 
 # Create symbolic link for python
 RUN ln -s /usr/bin/python3 /usr/bin/python
@@ -40,7 +39,12 @@ WORKDIR /app
 COPY requirements-docker.txt requirements.txt
 
 # Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Clean up pip cache and temporary files to save space
+RUN pip3 install --no-cache-dir -r requirements.txt && \
+    pip3 cache purge && \
+    rm -rf /tmp/* /var/tmp/* && \
+    find /usr/local/lib/python3.*/dist-packages -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.*/dist-packages -name "*.pyc" -delete 2>/dev/null || true
 
 # Copy application code
 COPY . .
@@ -49,8 +53,8 @@ COPY . .
 RUN mkdir -p /root/.cache/huggingface
 RUN mkdir -p /root/.lai-nux-tool/model_cache
 
-# Set up man pages
-RUN mandb
+# Set up man pages (skip for CI to save space)
+# RUN mandb
 
 # Create test environment setup script
 RUN echo '#!/bin/bash\n\

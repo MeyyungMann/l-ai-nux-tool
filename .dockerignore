@@ -2,6 +2,9 @@
 model_cache/
 quantized_model_cache/
 test_env/
+ollama_models/
+rag_cache/
+doc_cache/
 .cache/
 __pycache__/
 *.pyc
@@ -41,6 +44,15 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Environment and secrets (never include in Docker builds)
+.env
+.env.local
+.env.*
+*.env
+
+# Docker credentials (if accidentally created)
+.docker/config.json
 
 # Temporary files
 *.tmp
